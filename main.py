@@ -9,6 +9,10 @@ from anthropic import Anthropic
 
 app = FastAPI()
 
+from scribe import router as scribe_router
+app.include_router(scribe_router)
+
+
 
 # -------------------------
 # DB helpers (unchanged)
