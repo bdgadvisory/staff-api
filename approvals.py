@@ -45,11 +45,7 @@ class ApprovalRequest(BaseModel):
 class ApprovalAction(BaseModel):
     action: Literal["approve", "reject", "interview"]
     notes: Optional[str] = None
-
-    # Interview flow:
-    # Step 1: send questions (no answers yet)
     questions: Optional[List[str]] = None
-    # Step 2: send answers as a dict {"1":"...", "2":"..."} or {"question text":"answer"}
     answers: Optional[Dict[str, str]] = None
 
 
@@ -243,8 +239,7 @@ def approval_action(approval_id: str, payload: ApprovalAction) -> Dict[str, Any]
                 "escalated_model": _opus_model(),
             }
 
-        # interview flow:
-        # If questions provided and no answers -> store questions and set status interview
+        # interview
         if payload.questions and not payload.answers:
             cur.execute(
                 """
@@ -266,7 +261,6 @@ def approval_action(approval_id: str, payload: ApprovalAction) -> Dict[str, Any]
                 "interview_message_text": _interview_message(approval_id, payload.questions),
             }
 
-        # If answers provided -> revise using Opus and return to pending
         if payload.answers:
             notes = payload.notes or "Interview answers provided."
             revised, opus_notes = opus_revise(
