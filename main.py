@@ -3,7 +3,8 @@ from typing import Optional, List, Dict, Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+from google.cloud.sql.connector import Connector, Field
 from db import get_db_conn
 from anthropic import Anthropic
 
