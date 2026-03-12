@@ -126,7 +126,11 @@ Return JSON ONLY with keys:
         )
         text = "".join([b.text for b in msg.content if getattr(b, "type", None) == "text"]).strip()
         import json
-        data = json.loads(text)
+        import re
+        m = re.search(r'\{.*\}', text, re.S)
+        if not m:
+            raise ValueError(f"Deep Thought returned no JSON object. Raw: {text[:500]}")
+        data = json.loads(m.group(0))
         return DeepThoughtPacket(**data)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Deep Thought failed: {repr(e)}")
