@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -33,6 +33,7 @@ class ScribeLinkedInRequest(BaseModel):
     angle: Optional[str] = Field(None, description="Optional framing/angle")
     audience: Optional[str] = Field(None, description="Optional audience hint")
     num_sources: int = Field(5, ge=3, le=10, description="How many web sources to use")
+    voice: bool = Field(True, description="Run Voice pass (style/consistency) after Quill")
 
 
 class ResearchPacket(BaseModel):
@@ -50,6 +51,8 @@ class DeepThoughtPacket(BaseModel):
 
 class ScribeLinkedInResponse(BaseModel):
     post: str
+    post_draft: str
+    voice_notes: Optional[str] = None
     citations: List[Source]
     research_packet: ResearchPacket
     deep_thought: DeepThoughtPacket
@@ -79,7 +82,6 @@ def scout(topic: str, angle: Optional[str], num_sources: int) -> ResearchPacket:
     q = topic.strip()
     if angle:
         q = f"{q} {angle.strip()}"
-    # Bias toward your canonical frame
     q = f"{q} incentives governance capital execution"
     sources = serper_search(q, num=num_sources)
     return ResearchPacket(query=q, sources=sources)
@@ -106,8 +108,8 @@ Return JSON ONLY with keys:
 - thesis (string)
 - outline (array of strings)
 - key_points (array of strings)
-- cautions (array of strings)  # factual/tonal risks
-- cta_options (array of strings)  # end questions or takeaways
+- cautions (array of strings)
+- cta_options (array of strings)
 """
 
     try:
@@ -119,7 +121,6 @@ Return JSON ONLY with keys:
             messages=[{"role": "user", "content": prompt}],
         )
         text = "".join([b.text for b in msg.content if getattr(b, "type", None) == "text"]).strip()
-        # Parse JSON safely
         import json
         data = json.loads(text)
         return DeepThoughtPacket(**data)
@@ -142,7 +143,7 @@ Audience: {audience or "none"}
 Plan JSON:
 {plan.model_dump_json(indent=2)}
 
-Citations (must remain consistent with the plan; don't add new facts):
+Citations (for consistency; do not add new facts):
 {citations}
 
 Output ONLY the post text.
@@ -151,7 +152,7 @@ Output ONLY the post text.
     try:
         msg = client.messages.create(
             model=model,
-            max_tokens=800,
+            max_tokens=900,
             temperature=0.5,
             system=VOICE_RULES,
             messages=[{"role": "user", "content": prompt}],
@@ -161,13 +162,92 @@ Output ONLY the post text.
         raise HTTPException(status_code=502, detail=f"Quill failed: {repr(e)}")
 
 
+def voice_pass(topic: str, angle: Optional[str], audience: Optional[str], plan: DeepThoughtPacket, draft_post: str) -> tuple[str, str]:
+    """
+    Voice = Scribe-owned consistency pass:
+    - enforces tone + formatting + clarity
+    - does not introduce new facts
+    """
+    client = _anthropic_client()
+    model = _model("VOICE_MODEL", DEFAULT_SONNET)
+
+    prompt = f"""You are Voice. Improve the draft ONLY for voice, clarity, and LinkedIn readability.
+
+Constraints:
+- Keep the core meaning.
+- Do NOT add new factual claims.
+- Do NOT add hype language.
+- Enforce BdGAdvisory tone and structural lens.
+- End with a crisp takeaway or thoughtful question.
+
+Context:
+Topic: {topic}
+Angle: {angle or "none"}
+Audience: {audience or "none"}
+
+Plan (for intent):
+{plan.model_dump_json(indent=2)}
+
+Draft post:
+{draft_post}
+
+Return TWO sections exactly:
+
+[POST]
+<final post text>
+
+[NOTES]
+<brief bullet notes of what you changed and why>
+"""
+
+    try:
+        msg = client.messages.create(
+            model=model,
+            max_tokens=700,
+            temperature=0.2,
+            system=VOICE_RULES,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join([b.text for b in msg.content if getattr(b, "type", None) == "text"]).strip()
+
+        def extract(tag: str) -> str:
+            start = text.find(f"[{tag}]")
+            if start == -1:
+                return ""
+            start += len(tag) + 2
+            # find next tag
+            next_tags = []
+            for t in ("POST", "NOTES"):
+                if t == tag:
+                    continue
+                idx = text.find(f"[{t}]", start)
+                if idx != -1:
+                    next_tags.append(idx)
+            end = min(next_tags) if next_tags else len(text)
+            return text[start:end].strip()
+
+        post = extract("POST") or draft_post
+        notes = extract("NOTES") or ""
+        return post, notes
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Voice failed: {repr(e)}")
+
+
 @router.post("/linkedin", response_model=ScribeLinkedInResponse)
 def scribe_linkedin(payload: ScribeLinkedInRequest):
     research = scout(payload.topic, payload.angle, payload.num_sources)
     plan = deep_thought(payload.topic, payload.angle, payload.audience, research)
-    post = quill(payload.topic, payload.angle, payload.audience, research, plan)
+    draft = quill(payload.topic, payload.angle, payload.audience, research, plan)
+
+    final_post = draft
+    voice_notes: Optional[str] = None
+    if payload.voice:
+        final_post, voice_notes = voice_pass(payload.topic, payload.angle, payload.audience, plan, draft)
+
     return ScribeLinkedInResponse(
-        post=post,
+        post=final_post,
+        post_draft=draft,
+        voice_notes=voice_notes,
         citations=research.sources,
         research_packet=research,
         deep_thought=plan,
