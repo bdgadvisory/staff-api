@@ -1,11 +1,12 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from anthropic import Anthropic
 
 from search import serper_search, Source
+from db import get_db_conn
 
 router = APIRouter(prefix="/scribe", tags=["scribe"])
 
@@ -33,7 +34,8 @@ class ScribeLinkedInRequest(BaseModel):
     angle: Optional[str] = Field(None, description="Optional framing/angle")
     audience: Optional[str] = Field(None, description="Optional audience hint")
     num_sources: int = Field(5, ge=3, le=10, description="How many web sources to use")
-    voice: bool = Field(True, description="Run Voice pass (style/consistency) after Quill")
+    voice: bool = Field(True, description="Run Voice pass after Quill")
+    request_approval: bool = Field(True, description="Create an approval record for review")
 
 
 class ResearchPacket(BaseModel):
@@ -56,6 +58,8 @@ class ScribeLinkedInResponse(BaseModel):
     citations: List[Source]
     research_packet: ResearchPacket
     deep_thought: DeepThoughtPacket
+    approval_id: Optional[str] = None
+    approval_message_text: Optional[str] = None
 
 
 VOICE_RULES = """You are Staff:Scribe.
@@ -162,12 +166,7 @@ Output ONLY the post text.
         raise HTTPException(status_code=502, detail=f"Quill failed: {repr(e)}")
 
 
-def voice_pass(topic: str, angle: Optional[str], audience: Optional[str], plan: DeepThoughtPacket, draft_post: str) -> tuple[str, str]:
-    """
-    Voice = Scribe-owned consistency pass:
-    - enforces tone + formatting + clarity
-    - does not introduce new facts
-    """
+def voice_pass(topic: str, angle: Optional[str], audience: Optional[str], plan: DeepThoughtPacket, draft_post: str) -> Tuple[str, str]:
     client = _anthropic_client()
     model = _model("VOICE_MODEL", DEFAULT_SONNET)
 
@@ -200,37 +199,72 @@ Return TWO sections exactly:
 <brief bullet notes of what you changed and why>
 """
 
+    msg = client.messages.create(
+        model=model,
+        max_tokens=700,
+        temperature=0.2,
+        system=VOICE_RULES,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = "".join([b.text for b in msg.content if getattr(b, "type", None) == "text"]).strip()
+
+    def extract(tag: str) -> str:
+        start = text.find(f"[{tag}]")
+        if start == -1:
+            return ""
+        start += len(tag) + 2
+        next_tags = []
+        for t in ("POST", "NOTES"):
+            if t == tag:
+                continue
+            idx = text.find(f"[{t}]", start)
+            if idx != -1:
+                next_tags.append(idx)
+        end = min(next_tags) if next_tags else len(text)
+        return text[start:end].strip()
+
+    post = extract("POST") or draft_post
+    notes = extract("NOTES") or ""
+    return post, notes
+
+
+def create_approval(department: str, artifact_type: str, draft_text: str, summary: Optional[str]) -> Tuple[str, str]:
+    connector = None
+    conn = None
     try:
-        msg = client.messages.create(
-            model=model,
-            max_tokens=700,
-            temperature=0.2,
-            system=VOICE_RULES,
-            messages=[{"role": "user", "content": prompt}],
+        connector, conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO approvals (department, artifact_type, status, draft_text, notes)
+            VALUES (%s, %s, 'pending', %s, %s)
+            RETURNING id::text;
+            """,
+            (department, artifact_type, draft_text, summary),
         )
-        text = "".join([b.text for b in msg.content if getattr(b, "type", None) == "text"]).strip()
+        approval_id = cur.fetchone()[0]
+        conn.commit()
 
-        def extract(tag: str) -> str:
-            start = text.find(f"[{tag}]")
-            if start == -1:
-                return ""
-            start += len(tag) + 2
-            # find next tag
-            next_tags = []
-            for t in ("POST", "NOTES"):
-                if t == tag:
-                    continue
-                idx = text.find(f"[{t}]", start)
-                if idx != -1:
-                    next_tags.append(idx)
-            end = min(next_tags) if next_tags else len(text)
-            return text[start:end].strip()
-
-        post = extract("POST") or draft_post
-        notes = extract("NOTES") or ""
-        return post, notes
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Voice failed: {repr(e)}")
+        message_text = (
+            f"[APPROVAL REQUEST]\n"
+            f"department: {department}\n"
+            f"type: {artifact_type}\n"
+            f"id: {approval_id}\n\n"
+            f"{draft_text}\n\n"
+            f"Reply with: approve | reject: <note> | interview: <question>"
+        )
+        return approval_id, message_text
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        try:
+            if connector:
+                connector.close()
+        except Exception:
+            pass
 
 
 @router.post("/linkedin", response_model=ScribeLinkedInResponse)
@@ -244,6 +278,16 @@ def scribe_linkedin(payload: ScribeLinkedInRequest):
     if payload.voice:
         final_post, voice_notes = voice_pass(payload.topic, payload.angle, payload.audience, plan, draft)
 
+    approval_id = None
+    approval_message_text = None
+    if payload.request_approval:
+        approval_id, approval_message_text = create_approval(
+            department="scribe",
+            artifact_type="linkedin_post",
+            draft_text=final_post,
+            summary=f"topic={payload.topic}; angle={payload.angle or ''}",
+        )
+
     return ScribeLinkedInResponse(
         post=final_post,
         post_draft=draft,
@@ -251,4 +295,6 @@ def scribe_linkedin(payload: ScribeLinkedInRequest):
         citations=research.sources,
         research_packet=research,
         deep_thought=plan,
+        approval_id=approval_id,
+        approval_message_text=approval_message_text,
     )
