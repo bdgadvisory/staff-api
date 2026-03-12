@@ -1,0 +1,25 @@
+substitutions:
+  _REGION: us-central1
+  _REPO: staff-repo
+  _SERVICE: staff-api
+  _IMAGE: us-central1-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_IMAGE}", "."]
+
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "${_IMAGE}"]
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      [
+        "run","deploy","${_SERVICE}",
+        "--image","${_IMAGE}",
+        "--region","${_REGION}",
+        "--no-allow-unauthenticated"
+      ]
+
+images:
+  - "${_IMAGE}"
