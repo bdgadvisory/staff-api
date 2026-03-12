@@ -312,3 +312,64 @@ def approval_action(approval_id: str, payload: ApprovalAction) -> Dict[str, Any]
                 connector.close()
         except Exception:
             pass
+
+
+@router.get("/{approval_id}")
+def get_approval(approval_id: str) -> Dict[str, Any]:
+    connector = None
+    conn = None
+    try:
+        connector, conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+              id::text,
+              department,
+              artifact_type,
+              status,
+              draft_text,
+              final_text,
+              notes,
+              interview_questions,
+              interview_answers,
+              created_at::text,
+              updated_at::text
+            FROM approvals
+            WHERE id = %s::uuid;
+            """,
+            (approval_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Approval not found")
+
+        return {
+            "approval_id": row[0],
+            "department": row[1],
+            "artifact_type": row[2],
+            "status": row[3],
+            "draft_text": row[4],
+            "final_text": row[5],
+            "notes": row[6],
+            "interview_questions": row[7],
+            "interview_answers": row[8],
+            "created_at": row[9],
+            "updated_at": row[10],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Get approval failed: {repr(e)}")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        try:
+            if connector:
+                connector.close()
+        except Exception:
+            pass
