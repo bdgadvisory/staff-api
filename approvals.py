@@ -416,3 +416,72 @@ def get_approval_message(approval_id: str) -> Dict[str, Any]:
                 connector.close()
         except Exception:
             pass
+
+
+@router.get("")
+def list_approvals(status: Optional[str] = None, limit: int = 20) -> Dict[str, Any]:
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+
+    connector = None
+    conn = None
+    try:
+        connector, conn = get_db_conn()
+        cur = conn.cursor()
+
+        if status:
+            cur.execute(
+                """
+                SELECT id::text, department, artifact_type, status,
+                       created_at::text, updated_at::text,
+                       left(draft_text, 200)
+                FROM approvals
+                WHERE status = %s
+                ORDER BY updated_at DESC
+                LIMIT %s;
+                """,
+                (status, limit),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT id::text, department, artifact_type, status,
+                       created_at::text, updated_at::text,
+                       left(draft_text, 200)
+                FROM approvals
+                ORDER BY updated_at DESC
+                LIMIT %s;
+                """,
+                (limit,),
+            )
+
+        rows = cur.fetchall()
+        items = []
+        for r in rows:
+            items.append({
+                "approval_id": r[0],
+                "department": r[1],
+                "artifact_type": r[2],
+                "status": r[3],
+                "created_at": r[4],
+                "updated_at": r[5],
+                "draft_preview": r[6],
+            })
+
+        return {"count": len(items), "items": items}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"List approvals failed: {repr(e)}")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        try:
+            if connector:
+                connector.close()
+        except Exception:
+            pass
