@@ -1,5 +1,6 @@
 import os
-from typing import Optional, Literal, Dict, Any, Tuple
+import json
+from typing import Optional, Literal, Dict, Any, Tuple, List
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -45,6 +46,12 @@ class ApprovalAction(BaseModel):
     action: Literal["approve", "reject", "interview"]
     notes: Optional[str] = None
 
+    # Interview flow:
+    # Step 1: send questions (no answers yet)
+    questions: Optional[List[str]] = None
+    # Step 2: send answers as a dict {"1":"...", "2":"..."} or {"question text":"answer"}
+    answers: Optional[Dict[str, str]] = None
+
 
 def _message_text(department: str, artifact_type: str, approval_id: str, draft_text: str) -> str:
     return (
@@ -53,21 +60,44 @@ def _message_text(department: str, artifact_type: str, approval_id: str, draft_t
         f"type: {artifact_type}\n"
         f"id: {approval_id}\n\n"
         f"{draft_text}\n\n"
-        f"Reply with: approve | reject: <note> | interview: <question>"
+        f"Reply with: approve | reject: <note> | interview: <question(s)>"
     )
 
 
-def opus_revise(draft_text: str, notes: str) -> Tuple[str, str]:
+def _interview_message(approval_id: str, questions: List[str]) -> str:
+    q_lines = "\n".join([f"{i+1}) {q}" for i, q in enumerate(questions)])
+    return (
+        f"[INTERVIEW]\n"
+        f"id: {approval_id}\n\n"
+        f"Please answer:\n{q_lines}\n\n"
+        f"Then submit answers as a dict like: {{\"1\":\"...\",\"2\":\"...\"}}"
+    )
+
+
+def opus_revise(
+    draft_text: str,
+    notes: str,
+    interview_questions: Optional[List[str]] = None,
+    interview_answers: Optional[Dict[str, str]] = None,
+) -> Tuple[str, str]:
     client = _anthropic_client()
     model = _opus_model()
 
-    prompt = f"""Revise the draft based on the feedback.
+    interview_block = ""
+    if interview_questions:
+        interview_block += "Interview questions:\n" + "\n".join([f"- {q}" for q in interview_questions]) + "\n"
+    if interview_answers:
+        interview_block += "Interview answers:\n" + "\n".join([f"- {k}: {v}" for k, v in interview_answers.items()]) + "\n"
+
+    prompt = f"""Revise the draft based on the feedback (and interview Q/A if provided).
 
 Draft:
 {draft_text}
 
 Feedback / notes:
 {notes}
+
+{interview_block}
 
 Return TWO sections exactly:
 
@@ -156,17 +186,22 @@ def approval_action(approval_id: str, payload: ApprovalAction) -> Dict[str, Any]
         cur = conn.cursor()
 
         cur.execute(
-            "SELECT department, artifact_type, status, draft_text, notes FROM approvals WHERE id = %s::uuid;",
+            """
+            SELECT department, artifact_type, status, draft_text, notes, interview_questions, interview_answers
+            FROM approvals
+            WHERE id = %s::uuid;
+            """,
             (approval_id,),
         )
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Approval not found")
 
-        department, artifact_type, status, draft_text, prior_notes = row
+        department, artifact_type, status, draft_text, prior_notes, iq, ia = row
+        interview_questions = iq
+        interview_answers = ia
 
         if payload.action == "approve":
-            new_status = "approved"
             cur.execute(
                 """
                 UPDATE approvals
@@ -180,39 +215,93 @@ def approval_action(approval_id: str, payload: ApprovalAction) -> Dict[str, Any]
             conn.commit()
             return {"approval_id": out[0], "status": out[1], "updated_at": out[2]}
 
-        # reject/interview => Opus revise + re-queue as pending
         if payload.action == "reject":
-            action_status = "rejected"
-        else:
-            action_status = "interview"
+            notes = payload.notes or ""
+            revised, opus_notes = opus_revise(draft_text=draft_text, notes=notes)
+            combined_notes = "\n".join([n for n in [prior_notes, f"[rejected] {notes}".strip(), opus_notes] if n])
 
-        notes = payload.notes or ""
-        revised, opus_notes = opus_revise(draft_text=draft_text, notes=notes)
+            cur.execute(
+                """
+                UPDATE approvals
+                SET status='pending',
+                    draft_text=%s,
+                    notes=%s,
+                    updated_at=now()
+                WHERE id=%s::uuid
+                RETURNING id::text, status, updated_at::text;
+                """,
+                (revised, combined_notes, approval_id),
+            )
+            out = cur.fetchone()
+            conn.commit()
 
-        combined_notes = "\n".join([n for n in [prior_notes, f"[{action_status}] {notes}".strip(), opus_notes] if n])
+            return {
+                "approval_id": out[0],
+                "status": out[1],
+                "updated_at": out[2],
+                "message_text": _message_text(department, artifact_type, approval_id, revised),
+                "escalated_model": _opus_model(),
+            }
 
-        cur.execute(
-            """
-            UPDATE approvals
-            SET status='pending',
-                draft_text=%s,
-                notes=%s,
-                updated_at=now()
-            WHERE id=%s::uuid
-            RETURNING id::text, status, updated_at::text;
-            """,
-            (revised, combined_notes, approval_id),
-        )
-        out = cur.fetchone()
-        conn.commit()
+        # interview flow:
+        # If questions provided and no answers -> store questions and set status interview
+        if payload.questions and not payload.answers:
+            cur.execute(
+                """
+                UPDATE approvals
+                SET status='interview',
+                    interview_questions=%s::jsonb,
+                    updated_at=now()
+                WHERE id=%s::uuid
+                RETURNING id::text, status, updated_at::text;
+                """,
+                (json.dumps(payload.questions), approval_id),
+            )
+            out = cur.fetchone()
+            conn.commit()
+            return {
+                "approval_id": out[0],
+                "status": out[1],
+                "updated_at": out[2],
+                "interview_message_text": _interview_message(approval_id, payload.questions),
+            }
 
-        return {
-            "approval_id": out[0],
-            "status": out[1],
-            "updated_at": out[2],
-            "message_text": _message_text(department, artifact_type, approval_id, revised),
-            "escalated_model": _opus_model(),
-        }
+        # If answers provided -> revise using Opus and return to pending
+        if payload.answers:
+            notes = payload.notes or "Interview answers provided."
+            revised, opus_notes = opus_revise(
+                draft_text=draft_text,
+                notes=notes,
+                interview_questions=interview_questions,
+                interview_answers=payload.answers,
+            )
+            combined_notes = "\n".join([n for n in [prior_notes, "[interview]", notes, opus_notes] if n])
+
+            cur.execute(
+                """
+                UPDATE approvals
+                SET status='pending',
+                    draft_text=%s,
+                    interview_answers=%s::jsonb,
+                    notes=%s,
+                    updated_at=now()
+                WHERE id=%s::uuid
+                RETURNING id::text, status, updated_at::text;
+                """,
+                (revised, json.dumps(payload.answers), combined_notes, approval_id),
+            )
+            out = cur.fetchone()
+            conn.commit()
+
+            return {
+                "approval_id": out[0],
+                "status": out[1],
+                "updated_at": out[2],
+                "message_text": _message_text(department, artifact_type, approval_id, revised),
+                "escalated_model": _opus_model(),
+            }
+
+        raise HTTPException(status_code=400, detail="Interview requires questions[] or answers{}")
 
     except HTTPException:
         raise
