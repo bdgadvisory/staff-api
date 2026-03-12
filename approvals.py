@@ -373,3 +373,46 @@ def get_approval(approval_id: str) -> Dict[str, Any]:
                 connector.close()
         except Exception:
             pass
+
+
+@router.get("/{approval_id}/message")
+def get_approval_message(approval_id: str) -> Dict[str, Any]:
+    connector = None
+    conn = None
+    try:
+        connector, conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id::text, department, artifact_type, status, draft_text
+            FROM approvals
+            WHERE id = %s::uuid;
+            """,
+            (approval_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Approval not found")
+
+        _id, dept, atype, status, draft = row
+        return {
+            "approval_id": _id,
+            "status": status,
+            "message_text": _message_text(dept, atype, _id, draft),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Get approval message failed: {repr(e)}")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        try:
+            if connector:
+                connector.close()
+        except Exception:
+            pass
