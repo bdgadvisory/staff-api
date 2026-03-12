@@ -4,13 +4,15 @@ from typing import Optional, List, Dict, Any
 import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from google.cloud.sql.connector import Connector
+from db import get_db_conn
 from anthropic import Anthropic
 
 app = FastAPI()
 
 from scribe import router as scribe_router
+from approvals import router as approvals_router
 app.include_router(scribe_router)
+app.include_router(approvals_router)
 
 
 
