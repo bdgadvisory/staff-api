@@ -356,7 +356,7 @@ Output ONLY the post text.
     try:
         msg = client.messages.create(
             # We'll start with a stable “latest Sonnet” alias; we can pin later.
-            model="claude-3-5-sonnet-latest",
+            model=os.getenv("ANTHROPIC_MODEL","claude-3-5-sonnet-20241022"),
             max_tokens=700,
             temperature=0.5,
             system=voice_rules,
