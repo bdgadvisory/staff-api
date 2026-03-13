@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+staff_tools/__init__.py
+staff_tools/cli.py
+staff_tools.egg-info/PKG-INFO
+staff_tools.egg-info/SOURCES.txt
+staff_tools.egg-info/dependency_links.txt
+staff_tools.egg-info/entry_points.txt
+staff_tools.egg-info/requires.txt
+staff_tools.egg-info/top_level.txt

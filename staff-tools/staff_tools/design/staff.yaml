@@ -1,0 +1,22 @@
+version: 0
+project:
+  name: Staff
+model_policy:
+  default: claude-sonnet-4-6
+  escalate_on:
+    - reject
+    - interview
+  escalated: claude-opus-4-6
+
+connectors:
+  whatsapp:
+    kind: whatsapp
+    mode: stub   # stub|cloud_api
+    approval_required_for_send: true
+
+departments:
+  scribe:
+    tasks:
+      linkedin_post:
+        approval_required: true
+        outputs: [draft_text, voice_notes]

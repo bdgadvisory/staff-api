@@ -1,0 +1,2 @@
+[console_scripts]
+staff-tools = staff_tools.cli:main

@@ -1,0 +1,12 @@
+[project]
+name = "staff-tools"
+version = "0.1.0"
+description = "Staff local build/config/governance toolchain"
+requires-python = ">=3.9"
+dependencies = ["pyyaml>=6.0.1"]
+
+[project.scripts]
+staff-tools = "staff_tools.cli:main"
+
+[tool.setuptools]
+packages = ["staff_tools"]
