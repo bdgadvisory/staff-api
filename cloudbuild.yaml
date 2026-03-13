@@ -27,10 +27,17 @@ steps:
     entrypoint: gcloud
     args:
       [
-        "run","deploy","${_SERVICE}",
-        "--image","${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA",
-        "--region","${_REGION}",
+        "run",
+        "deploy",
+        "${_SERVICE}",
+        "--image",
+        "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA",
+        "--region",
+        "${_REGION}",
         "--no-allow-unauthenticated",
- "--revision-suffix","$SHORT_SHA"
- ]images:
+        "--revision-suffix",
+        "$SHORT_SHA"
+      ]
+
+images:
   - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA"
