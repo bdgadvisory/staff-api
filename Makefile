@@ -65,4 +65,4 @@ migrate:
 
 tick:
 curl -s -X POST http://127.0.0.1:8000/internal/reminders/tick \
-  -H "X-Reminders-Tick-Secret: $$REMINDERS_TICK_SECRET" | python3 -m json.tool
+	-H "X-Reminders-Tick-Secret: $$REMINDERS_TICK_SECRET" | python3 -m json.tool
