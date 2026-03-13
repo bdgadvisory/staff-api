@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
+
 from datetime import datetime
 from typing import Optional, List, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, Field
 
 from db import get_db_conn
@@ -11,6 +13,9 @@ from db import get_db_conn
 
 router = APIRouter(prefix="/reminders", tags=["reminders"])
 
+
+
+internal_router = APIRouter(prefix="/internal/reminders", tags=["internal"])
 
 class ReminderCreate(BaseModel):
     message: str = Field(..., min_length=1)
@@ -307,3 +312,76 @@ def patch_reminder(reminder_id: str, payload: ReminderPatch):
                 connector.close()
         except Exception:
             pass
+
+@internal_router.post("/tick")
+def reminders_tick(x_reminders_tick_secret: str = Header(default="", alias="X-Reminders-Tick-Secret")):
+    expected = os.environ.get("REMINDERS_TICK_SECRET", "")
+    if not expected or x_reminders_tick_secret != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    connector = None
+    conn = None
+    processed = 0
+    done = 0
+    errored = 0
+
+    try:
+        connector, conn = get_db_conn()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT id::text, rrule
+            FROM reminders
+            WHERE status = 'scheduled'
+              AND next_fire_at <= now()
+            ORDER BY next_fire_at ASC
+            LIMIT 50
+            """
+        )
+        rows = cur.fetchall()
+
+        for reminder_id, rrule in rows:
+            processed += 1
+            if rrule:
+                cur.execute(
+                    """
+                    UPDATE reminders
+                    SET status = 'error',
+                        last_error = %s,
+                        updated_at = now()
+                    WHERE id = %s::uuid
+                    """,
+                    ("RRULE tick not implemented yet", reminder_id),
+                )
+                errored += 1
+            else:
+                cur.execute(
+                    """
+                    UPDATE reminders
+                    SET status = 'done',
+                        last_fired_at = now(),
+                        updated_at = now()
+                    WHERE id = %s::uuid
+                    """,
+                    (reminder_id,),
+                )
+                done += 1
+
+        conn.commit()
+        return {"ok": True, "processed": processed, "done": done, "errored": errored}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tick failed: {repr(e)}")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        try:
+            if connector:
+                connector.close()
+        except Exception:
+            pass
+

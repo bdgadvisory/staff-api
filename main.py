@@ -12,10 +12,11 @@ app = FastAPI()
 
 from scribe import router as scribe_router
 from approvals import router as approvals_router
-from reminders import router as reminders_router
+from reminders import router as reminders_router, internal_router as reminders_internal_router
 app.include_router(scribe_router)
 app.include_router(approvals_router)
 app.include_router(reminders_router)
+app.include_router(reminders_internal_router)
 
 
 

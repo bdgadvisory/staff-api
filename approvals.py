@@ -45,8 +45,10 @@ class ApprovalRequest(BaseModel):
 class ApprovalAction(BaseModel):
     action: Literal["approve", "reject", "interview"]
     notes: Optional[str] = None
+
+    # Interview flow (optional):
     questions: Optional[List[str]] = None
-    answers: Optional[Dict[str, str]] = None
+    answers: Optional[Dict[str, str]] = None  # keys can be "1", "2", or question text
 
 
 def _message_text(department: str, artifact_type: str, approval_id: str, draft_text: str) -> str:
@@ -66,16 +68,11 @@ def _interview_message(approval_id: str, questions: List[str]) -> str:
         f"[INTERVIEW]\n"
         f"id: {approval_id}\n\n"
         f"Please answer:\n{q_lines}\n\n"
-        f"Then submit answers as a dict like: {{\"1\":\"...\",\"2\":\"...\"}}"
+        f"Then submit answers via /approvals/{approval_id}/action with action=interview and answers={{'1':'..','2':'..'}}"
     )
 
 
-def opus_revise(
-    draft_text: str,
-    notes: str,
-    interview_questions: Optional[List[str]] = None,
-    interview_answers: Optional[Dict[str, str]] = None,
-) -> Tuple[str, str]:
+def opus_revise(draft_text: str, notes: str, interview_questions: Optional[List[str]] = None, interview_answers: Optional[Dict[str, str]] = None) -> Tuple[str, str]:
     client = _anthropic_client()
     model = _opus_model()
 
@@ -182,11 +179,7 @@ def approval_action(approval_id: str, payload: ApprovalAction) -> Dict[str, Any]
         cur = conn.cursor()
 
         cur.execute(
-            """
-            SELECT department, artifact_type, status, draft_text, notes, interview_questions, interview_answers
-            FROM approvals
-            WHERE id = %s::uuid;
-            """,
+            "SELECT department, artifact_type, status, draft_text, notes, interview_questions, interview_answers FROM approvals WHERE id = %s::uuid;",
             (approval_id,),
         )
         row = cur.fetchone()
@@ -239,7 +232,8 @@ def approval_action(approval_id: str, payload: ApprovalAction) -> Dict[str, Any]
                 "escalated_model": _opus_model(),
             }
 
-        # interview
+        # interview flow
+        # If questions provided and no answers yet -> store questions, set status interview, return interview prompt
         if payload.questions and not payload.answers:
             cur.execute(
                 """
@@ -261,6 +255,7 @@ def approval_action(approval_id: str, payload: ApprovalAction) -> Dict[str, Any]
                 "interview_message_text": _interview_message(approval_id, payload.questions),
             }
 
+        # If answers provided -> revise using Opus with Q/A, return to pending
         if payload.answers:
             notes = payload.notes or "Interview answers provided."
             revised, opus_notes = opus_revise(
@@ -301,179 +296,6 @@ def approval_action(approval_id: str, payload: ApprovalAction) -> Dict[str, Any]
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Approval action failed: {repr(e)}")
-    finally:
-        try:
-            if conn:
-                conn.close()
-        except Exception:
-            pass
-        try:
-            if connector:
-                connector.close()
-        except Exception:
-            pass
-
-
-@router.get("/{approval_id}")
-def get_approval(approval_id: str) -> Dict[str, Any]:
-    connector = None
-    conn = None
-    try:
-        connector, conn = get_db_conn()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT
-              id::text,
-              department,
-              artifact_type,
-              status,
-              draft_text,
-              final_text,
-              notes,
-              interview_questions,
-              interview_answers,
-              created_at::text,
-              updated_at::text
-            FROM approvals
-            WHERE id = %s::uuid;
-            """,
-            (approval_id,),
-        )
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Approval not found")
-
-        return {
-            "approval_id": row[0],
-            "department": row[1],
-            "artifact_type": row[2],
-            "status": row[3],
-            "draft_text": row[4],
-            "final_text": row[5],
-            "notes": row[6],
-            "interview_questions": row[7],
-            "interview_answers": row[8],
-            "created_at": row[9],
-            "updated_at": row[10],
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Get approval failed: {repr(e)}")
-    finally:
-        try:
-            if conn:
-                conn.close()
-        except Exception:
-            pass
-        try:
-            if connector:
-                connector.close()
-        except Exception:
-            pass
-
-
-@router.get("/{approval_id}/message")
-def get_approval_message(approval_id: str) -> Dict[str, Any]:
-    connector = None
-    conn = None
-    try:
-        connector, conn = get_db_conn()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT id::text, department, artifact_type, status, draft_text
-            FROM approvals
-            WHERE id = %s::uuid;
-            """,
-            (approval_id,),
-        )
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Approval not found")
-
-        _id, dept, atype, status, draft = row
-        return {
-            "approval_id": _id,
-            "status": status,
-            "message_text": _message_text(dept, atype, _id, draft),
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Get approval message failed: {repr(e)}")
-    finally:
-        try:
-            if conn:
-                conn.close()
-        except Exception:
-            pass
-        try:
-            if connector:
-                connector.close()
-        except Exception:
-            pass
-
-
-@router.get("")
-def list_approvals(status: Optional[str] = None, limit: int = 20) -> Dict[str, Any]:
-    if limit < 1 or limit > 100:
-        raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
-
-    connector = None
-    conn = None
-    try:
-        connector, conn = get_db_conn()
-        cur = conn.cursor()
-
-        if status:
-            cur.execute(
-                """
-                SELECT id::text, department, artifact_type, status,
-                       created_at::text, updated_at::text,
-                       left(draft_text, 200)
-                FROM approvals
-                WHERE status = %s
-                ORDER BY updated_at DESC
-                LIMIT %s;
-                """,
-                (status, limit),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT id::text, department, artifact_type, status,
-                       created_at::text, updated_at::text,
-                       left(draft_text, 200)
-                FROM approvals
-                ORDER BY updated_at DESC
-                LIMIT %s;
-                """,
-                (limit,),
-            )
-
-        rows = cur.fetchall()
-        items = []
-        for r in rows:
-            items.append({
-                "approval_id": r[0],
-                "department": r[1],
-                "artifact_type": r[2],
-                "status": r[3],
-                "created_at": r[4],
-                "updated_at": r[5],
-                "draft_preview": r[6],
-            })
-
-        return {"count": len(items), "items": items}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"List approvals failed: {repr(e)}")
     finally:
         try:
             if conn:
