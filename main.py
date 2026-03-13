@@ -80,6 +80,67 @@ def db_check():
             pass
 
 
+@app.get("/ui/status")
+def ui_status():
+    """
+    Aggregated status endpoint for the UI.
+    Runs server-side so the UI doesn't need to call private endpoints directly.
+    """
+    out = {
+        "ok": True,
+        "components": {}
+    }
+
+    # staff-api health (in-process)
+    out["components"]["staff-api"] = {"status": "ok"}
+
+    # db-check (real DB connectivity)
+    try:
+        connector, conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT 1;")
+        cur.fetchone()
+        out["components"]["db"] = {"status": "ok"}
+    except Exception as e:
+        out["components"]["db"] = {"status": "degraded", "error": repr(e)}
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        try:
+            connector.close()
+        except Exception:
+            pass
+
+    # reminders endpoint (DB access + table exists)
+    try:
+        connector, conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM reminders LIMIT 1;")
+        out["components"]["reminders"] = {"status": "ok"}
+    except Exception as e:
+        out["components"]["reminders"] = {"status": "degraded", "error": repr(e)}
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        try:
+            connector.close()
+        except Exception:
+            pass
+
+    # policy gate is config-side; treat as ok (UI uses this as static component)
+    out["components"]["skills-gate"] = {"status": "ok"}
+
+    # planned components
+    out["components"]["agent-inbox"] = {"status": "planned"}
+    out["components"]["home-ops"] = {"status": "planned"}
+
+    return out
+
+
 class TaskCreate(BaseModel):
     title: str
     notes: Optional[str] = None

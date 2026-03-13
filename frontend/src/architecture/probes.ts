@@ -1,20 +1,24 @@
 import type { ArchNode, ArchStatus } from "./registry";
 import { apiGet } from "../api";
 
-export async function probeNode(n: ArchNode): Promise<ArchStatus> {
-  if (!n.probe) return n.status ?? "unknown";
-  try {
-    await apiGet<any>(n.probe.path);
-    return "ok";
-  } catch {
-    return "degraded";
-  }
-}
+type UiStatusResponse = {
+  ok: boolean;
+  components: Record<string, { status: ArchStatus; error?: string }>;
+};
 
 export async function probeAll(nodes: ArchNode[]): Promise<Record<string, ArchStatus>> {
   const out: Record<string, ArchStatus> = {};
-  await Promise.all(nodes.map(async (n) => {
-    out[n.id] = await probeNode(n);
-  }));
-  return out;
+  try {
+    const r = await apiGet<UiStatusResponse>("/ui/status");
+    for (const n of nodes) {
+      out[n.id] = r.components?.[n.id]?.status ?? n.status ?? "unknown";
+    }
+    return out;
+  } catch {
+    // If UI can't reach the backend at all, mark probed nodes as degraded.
+    for (const n of nodes) {
+      out[n.id] = n.probe ? "degraded" : (n.status ?? "unknown");
+    }
+    return out;
+  }
 }
