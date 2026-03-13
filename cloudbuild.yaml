@@ -12,7 +12,7 @@ steps:
       [
         "build",
         "-t",
-        "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA",
+        "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA",
         "."
       ]
 
@@ -20,7 +20,7 @@ steps:
     args:
       [
         "push",
-        "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA"
+        "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA"
       ]
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -28,10 +28,9 @@ steps:
     args:
       [
         "run","deploy","${_SERVICE}",
-        "--image","us-central1-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA",
+        "--image","${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA",
         "--region","${_REGION}",
-        "--no-allow-unauthenticated"
-      ]
-
-images:
-  - "us-central1-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA"
+        "--no-allow-unauthenticated",
+ "--revision-suffix","$SHORT_SHA"
+ ]images:
+  - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA"
