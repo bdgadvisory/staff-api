@@ -48,3 +48,21 @@ interview-answer:
 scribe:
 	@if [ -z "$(TOPIC)" ]; then echo "Set TOPIC='...'"; exit 2; fi
 	@curl -sS -X POST "$(BASE)/scribe/linkedin" -H "Authorization: Bearer $(TOKEN)" -H "Content-Type: application/json" -d '{"topic":"$(TOPIC)","angle":"$(ANGLE)","num_sources":5,"voice":true,"request_approval":true}' | python3 -c 'import sys,json; d=json.load(sys.stdin); print("approval_id=", d.get("approval_id")); print(d.get("approval_message_text","")[:900])'
+
+.PHONY: venv install dev migrate tick
+
+venv:
+python3 -m venv .venv
+
+install:
+. .venv/bin/activate && pip install -U pip && pip install -r requirements.txt
+
+dev:
+. .venv/bin/activate && . scripts/dev_env.sh && python -m uvicorn main:app --reload --port 8000
+
+migrate:
+. .venv/bin/activate && . scripts/dev_env.sh && python scripts/migrate.py
+
+tick:
+curl -s -X POST http://127.0.0.1:8000/internal/reminders/tick \
+  -H "X-Reminders-Tick-Secret: $$REMINDERS_TICK_SECRET" | python3 -m json.tool
