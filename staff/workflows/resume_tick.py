@@ -6,7 +6,7 @@ from dataclasses import fields
 from typing import Any
 
 from staff.llm_router.types import OutputClass, TaskContext
-from staff.workflows.checkpoints import FileCheckpointStore
+from staff.workflows.checkpoints import FileCheckpointStore, PostgresCheckpointStore
 from staff.workflows.executor import WorkflowExecutor
 from staff.workflows.loader import load_workflow
 from staff.workflows.runtime import build_executor_from_env
@@ -57,7 +57,18 @@ def workflow_resume_tick(*, now_ts: float | None = None) -> dict[str, Any]:
     """
 
     now = float(now_ts or time.time())
-    store = FileCheckpointStore(os.environ.get("WORKFLOW_CHECKPOINT_DIR", "./.workflow_checkpoints"))
+    store_kind = os.environ.get("WORKFLOW_CHECKPOINT_STORE")
+    if store_kind:
+        store_kind = store_kind.lower()
+    else:
+        # Auto-select: use Postgres only when DB env is configured; otherwise file store (tests/local).
+        has_db_env = all(os.environ.get(k) for k in ("INSTANCE_CONNECTION_NAME", "DB_NAME", "DB_USER", "DB_PASSWORD"))
+        store_kind = "postgres" if has_db_env else "file"
+
+    if store_kind == "file":
+        store = FileCheckpointStore(os.environ.get("WORKFLOW_CHECKPOINT_DIR", "./.workflow_checkpoints"))
+    else:
+        store = PostgresCheckpointStore()
 
     processed = 0
     resumed = 0
@@ -66,16 +77,26 @@ def workflow_resume_tick(*, now_ts: float | None = None) -> dict[str, Any]:
 
     ex: WorkflowExecutor = build_executor_from_env(live_mode=None)
 
-    for p in store.list_checkpoints():
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                data = __import__("json").load(f)
-
-            if not data.get("halted"):
+    # Determine candidates (due halted workflows)
+    workflow_ids: list[str] = []
+    if hasattr(store, "list_due_workflow_ids"):
+        workflow_ids = list(getattr(store, "list_due_workflow_ids")(now_ts=now))
+    else:
+        # File store fallback
+        for p in store.list_checkpoints():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = __import__("json").load(f)
+                if data.get("halted") and data.get("next_resume_at") and float(data.get("next_resume_at")) <= now:
+                    workflow_ids.append(str(data.get("workflow_id")))
+            except Exception:
                 continue
 
-            next_resume_at = data.get("next_resume_at")
-            if not next_resume_at or float(next_resume_at) > now:
+    for workflow_id in workflow_ids:
+        try:
+            data = store.load(workflow_id) or {}
+
+            if not data.get("halted"):
                 continue
 
             processed += 1

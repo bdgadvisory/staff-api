@@ -15,6 +15,7 @@ from staff.providers.anthropic_adapter import AnthropicAdapter
 from staff.providers.mock_adapter import MockAdapter
 from staff.providers.openai_adapter import OpenAIAdapter
 from staff.review_orchestrator.orchestrator import ReviewOrchestrator
+from staff.workflows.checkpoints import FileCheckpointStore, PostgresCheckpointStore
 from staff.workflows.executor import WorkflowExecutor
 
 
@@ -53,6 +54,16 @@ def build_executor_from_env(*, live_mode: bool | None = None) -> WorkflowExecuto
 
     reviewer = ReviewOrchestrator(adapters=adapters)
 
+    store_kind = os.environ.get("WORKFLOW_CHECKPOINT_STORE")
+    if store_kind:
+        store_kind = store_kind.lower()
+    else:
+        # Auto-select: use Postgres only when DB env is configured; otherwise file store (tests/local).
+        has_db_env = all(os.environ.get(k) for k in ("INSTANCE_CONNECTION_NAME", "DB_NAME", "DB_USER", "DB_PASSWORD"))
+        store_kind = "postgres" if has_db_env else "file"
+
+    checkpoint_store = FileCheckpointStore() if store_kind == "file" else PostgresCheckpointStore()
+
     return WorkflowExecutor(
         router=router,
         retrieval=retrieval,
@@ -62,4 +73,5 @@ def build_executor_from_env(*, live_mode: bool | None = None) -> WorkflowExecuto
         confidence=ConfidenceEngine(ConfidencePolicy()),
         escalation=EscalationEngine(),
         audit=AuditLogger(sink_path=None),
+        checkpoint_store=checkpoint_store,
     )
