@@ -257,3 +257,40 @@ def test_halted_workflows_do_not_rerun_completed_steps_on_resume(executor: Workf
 
     assert pre[:6] == post[:6]
     assert post.count("retrieve") == 1
+
+
+def test_confidence_objects_present_on_required_steps(executor: WorkflowExecutor):
+    wf = load_workflow("staff/examples/workflows/linkedin_post.yaml")
+    ctx = _ctx("linkedin", task_type="linkedin_post")
+    state = _state(wf.name, "linkedin", "linkedin_post", OutputClass.C, "draft a post")
+
+    executor.run(ctx, wf, state)
+
+    # steps before approval halt should include confidence on generate/rewrite/voice_pass/critique
+    required_types = {"generate", "rewrite", "voice_pass", "critique"}
+    for art in state.step_artifacts:
+        if art.step_type in required_types:
+            assert art.confidence is not None
+            assert 0.0 <= art.confidence.confidence <= 1.0
+            assert 0.0 <= art.confidence.ambiguity_score <= 1.0
+            assert 0.0 <= art.confidence.source_quality <= 1.0
+
+
+def test_low_confidence_review_outcome_blocks_finalize(executor: WorkflowExecutor):
+    # Force rewrite-required on editorial_critique
+    executor.adapters["anthropic"].behavior["qa_status_by_step_id"]["editorial_critique"] = "REWRITE_REQUIRED"
+
+    wf = load_workflow("staff/examples/workflows/linkedin_post.yaml")
+    ctx = _ctx("linkedin", task_type="linkedin_post")
+    state = _state(wf.name, "linkedin", "linkedin_post", OutputClass.C, "draft a post")
+
+    executor.run(ctx, wf, state)
+    executor.resume_after_approval(state, approved=True)
+    res2 = executor.run(ctx, wf, state)
+
+    assert res2.halted is True
+    last = state.step_artifacts[-1]
+    assert last.step_type == "finalize"
+    assert last.status == "FAILED"
+    assert last.confidence is not None
+    assert last.confidence.confidence <= 0.45

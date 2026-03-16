@@ -13,6 +13,7 @@ from staff.llm_router.task_classifier import TaskClassifier
 from staff.llm_router.types import LLMResult, ModelSelection, OutputClass, TaskContext
 from staff.providers.base import LLMCall, ProviderAdapter
 from staff.review_orchestrator.orchestrator import ReviewOrchestrator, ReviewStage
+from staff.workflows.confidence import StepConfidenceDeriver
 from staff.workflows.types import StepArtifact, WorkflowDefinition, WorkflowState, WorkflowStep
 
 
@@ -51,6 +52,7 @@ class WorkflowExecutor:
         self.adapters = adapters
         self.reviewer = reviewer
         self.confidence = confidence
+        self._conf = StepConfidenceDeriver(confidence)
         self.escalation = escalation
         self.audit = audit
         self.classifier = classifier or TaskClassifier()
@@ -229,6 +231,8 @@ class WorkflowExecutor:
 
         out: LLMResult = adapter.complete(call)
 
+        conf = self._conf.derive(ctx=ctx, state=state, step_type=kind)
+
         return StepArtifact(
             step_id=step.step_id,
             step_type=kind,  # generate|rewrite|voice_pass
@@ -239,6 +243,8 @@ class WorkflowExecutor:
             input_refs=["retrieval_bundle", "prior_output" if state.last_output_text() else "input_payload"],
             output_text=out.text,
             output_structured=None,
+            confidence=conf,
+            needs_review=conf.needs_review,
             citations=state.citations,
             source_object_ids=state.source_object_ids,
         )
@@ -289,6 +295,8 @@ class WorkflowExecutor:
         else:
             state.review_status = "REVIEWED"
 
+        conf = self._conf.derive(ctx=ctx, state=state, step_type=step.step_type, review_outcome=head)
+
         return StepArtifact(
             step_id=step.step_id,
             step_type=step.step_type,
@@ -298,6 +306,8 @@ class WorkflowExecutor:
             selected_model=selection.model,
             input_refs=["prior_output"],
             output_text=review_out.text,
+            confidence=conf,
+            needs_review=conf.needs_review,
             citations=state.citations,
             source_object_ids=state.source_object_ids,
             next_action=None,
@@ -393,16 +403,46 @@ class WorkflowExecutor:
         return StepArtifact(step_id=step.step_id, step_type="audit", status="DONE")
 
     def _step_finalize(self, ctx: TaskContext, wf: WorkflowDefinition, state: WorkflowState, step: WorkflowStep) -> StepArtifact:
+        conf = self._conf.derive(ctx=ctx, state=state, step_type="finalize")
+
         # Enforce class conditions.
         if state.output_class == OutputClass.C:
             if state.review_status == "NOT_REVIEWED":
-                return StepArtifact(step_id=step.step_id, step_type="finalize", status="FAILED", next_action="missing_review")
+                return StepArtifact(
+                    step_id=step.step_id,
+                    step_type="finalize",
+                    status="FAILED",
+                    confidence=conf,
+                    needs_review=True,
+                    next_action="missing_review",
+                )
             if state.review_status in ("REWRITE_REQUIRED", "ESCALATE_TO_HUMAN"):
-                return StepArtifact(step_id=step.step_id, step_type="finalize", status="FAILED", next_action=f"review_status_{state.review_status}")
+                return StepArtifact(
+                    step_id=step.step_id,
+                    step_type="finalize",
+                    status="FAILED",
+                    confidence=conf,
+                    needs_review=True,
+                    next_action=f"review_status_{state.review_status}",
+                )
             if state.approval_status == "AWAITING_APPROVAL":
-                return StepArtifact(step_id=step.step_id, step_type="finalize", status="HALTED", next_action="awaiting_approval")
+                return StepArtifact(
+                    step_id=step.step_id,
+                    step_type="finalize",
+                    status="HALTED",
+                    confidence=conf,
+                    needs_review=True,
+                    next_action="awaiting_approval",
+                )
             if state.approval_status == "REJECTED":
-                return StepArtifact(step_id=step.step_id, step_type="finalize", status="FAILED", next_action="rejected")
+                return StepArtifact(
+                    step_id=step.step_id,
+                    step_type="finalize",
+                    status="FAILED",
+                    confidence=conf,
+                    needs_review=True,
+                    next_action="rejected",
+                )
 
         state.final_output = state.last_output_text()
 
@@ -411,6 +451,8 @@ class WorkflowExecutor:
             step_type="finalize",
             status="DONE",
             output_text=state.final_output,
+            confidence=conf,
+            needs_review=conf.needs_review,
             citations=state.citations,
             source_object_ids=state.source_object_ids,
         )
