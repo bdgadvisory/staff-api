@@ -9,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from staff.llm_router.types import RetrievalBundle
 from staff.workflows.types import StepArtifact, WorkflowState
 
 
@@ -67,6 +68,7 @@ class FileCheckpointStore(WorkflowCheckpointStore):
             "output_class": state.output_class.value,
             "current_step_index": state.current_step,
             "input_payload": state.input_payload,
+            "retrieval_bundle": asdict(state.retrieval_bundle) if state.retrieval_bundle else asdict(RetrievalBundle()),
             "completed_artifacts": [asdict(a) for a in state.step_artifacts],
             "retry_state": state.retry_state,
             "next_resume_at": state.next_resume_at,

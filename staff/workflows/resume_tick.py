@@ -5,7 +5,7 @@ import time
 from dataclasses import fields
 from typing import Any
 
-from staff.llm_router.types import OutputClass, TaskContext
+from staff.llm_router.types import OutputClass, RetrievalBundle, TaskContext
 from staff.workflows.checkpoints import FileCheckpointStore, PostgresCheckpointStore
 from staff.workflows.executor import WorkflowExecutor
 from staff.workflows.loader import load_workflow
@@ -31,6 +31,13 @@ def _state_from_checkpoint(data: dict[str, Any]) -> WorkflowState:
         input_payload=data.get("input_payload") or {},
         audit_context=data.get("audit_context") or {},
     )
+
+    # Restore retrieval bundle if present; fall back to empty bundle for determinism.
+    try:
+        rb = data.get("retrieval_bundle") or {}
+        st.retrieval_bundle = RetrievalBundle(**rb) if isinstance(rb, dict) else RetrievalBundle()
+    except Exception:
+        st.retrieval_bundle = RetrievalBundle()
 
     st.halted = bool(data.get("halted") or False)
     st.halt_reason = data.get("halt_reason")
@@ -141,6 +148,36 @@ def workflow_resume_tick(*, now_ts: float | None = None) -> dict[str, Any]:
 
             # persist after resume attempt
             store.save_post_call(st.workflow_id, st, "workflow_resume_tick", StepArtifact(step_id="workflow_resume_tick", step_type="audit", status="DONE"))
+
+            # Best-effort: update workflow_runs status in Postgres (if configured)
+            try:
+                if all(os.environ.get(k) for k in ("INSTANCE_CONNECTION_NAME", "DB_NAME", "DB_USER", "DB_PASSWORD")):
+                    from db import get_db_conn  # type: ignore
+
+                    connector, conn = get_db_conn()
+                    try:
+                        cur = conn.cursor()
+                        cur.execute(
+                            """
+                            UPDATE workflow_runs
+                            SET status=%s, updated_at=now(), state = COALESCE(state, '{}'::jsonb) || %s::jsonb
+                            WHERE workflow_id=%s
+                            """,
+                            (
+                                "DONE" if not st.halted else "HALTED",
+                                __import__("json").dumps({"halted": st.halted, "halt_reason": st.halt_reason, "next_resume_at": st.next_resume_at}, ensure_ascii=False),
+                                st.workflow_id,
+                            ),
+                        )
+                        conn.commit()
+                    finally:
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+                        connector.close()
+            except Exception:
+                pass
 
             resumed += 1
 
