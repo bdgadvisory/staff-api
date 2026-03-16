@@ -16,6 +16,7 @@ class MockAdapter(ProviderAdapter):
       - by_step_type: {step_type: {text: str}}
       - by_step_id: {step_id: {text: str}}
       - qa_status_by_step_id: {step_id: "PASS"|"PASS_WITH_WARNINGS"|"REWRITE_REQUIRED"|"ESCALATE_TO_HUMAN"}
+      - failures_by_step_id: {step_id: {times: int, error: "rate_limit"|"overloaded"|"timeout", retry_after_s: float}}
       - inject_disagreement: bool (adds marker)
 
     The executor supplies metadata: workflow_id, step_id, step_type, department, task_type.
@@ -30,6 +31,31 @@ class MockAdapter(ProviderAdapter):
         md = call.metadata or {}
         step_id = str(md.get("step_id") or "")
         step_type = str(md.get("step_type") or "")
+
+        # Deterministic failure injection (rate-limit/overload simulation)
+        failures = (self.behavior.get("failures_by_step_id") or {}).get(step_id)
+        if failures:
+            times = int(failures.get("times") or 0)
+            key = f"__fail_count__:{step_id}"
+            so_far = int(self.behavior.get(key) or 0)
+            if so_far < times:
+                self.behavior[key] = so_far + 1
+
+                class _MockHTTPError(RuntimeError):
+                    def __init__(self, msg: str, status_code: int, retry_after_s: float | None):
+                        super().__init__(msg)
+                        self.status_code = status_code
+                        self.retry_after_s = retry_after_s
+
+                err = str(failures.get("error") or "rate_limit")
+                retry_after_s = failures.get("retry_after_s")
+                if err == "rate_limit":
+                    raise _MockHTTPError("429 rate limit (mock)", 429, retry_after_s)
+                if err == "overloaded":
+                    raise _MockHTTPError("503 overloaded (mock)", 503, retry_after_s)
+                if err == "timeout":
+                    raise TimeoutError("timeout (mock)")
+                raise RuntimeError(f"mock failure: {err}")
 
         # Priority: by_step_id -> by_step_type -> QA status helper -> default echo
         by_step_id = (self.behavior.get("by_step_id") or {}).get(step_id)

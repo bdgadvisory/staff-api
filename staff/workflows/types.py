@@ -46,6 +46,16 @@ class StepArtifact:
     citations: list[dict[str, Any]] = field(default_factory=list)
     source_object_ids: list[str] = field(default_factory=list)
 
+    # Resumption / retry metadata (populated on HALTED/FAILED provider conditions)
+    retry_count: int | None = None
+    halt_reason: str | None = None
+    provider_name: str | None = None
+    model_name: str | None = None
+    backoff_s: float | None = None
+    auto_resume_scheduled: bool | None = None
+    resumed_from_checkpoint: bool | None = None
+    cooldown_state: dict[str, Any] | None = None
+
     next_action: str | None = None
 
 
@@ -74,14 +84,41 @@ class WorkflowState:
 
     audit_context: dict[str, Any] = field(default_factory=dict)
 
-    # For resumption without re-running prior steps
+    # Resumption without re-running prior steps
     halted: bool = False
     halt_reason: str | None = None
+    next_resume_at: float | None = None
+
+    retry_state: dict[str, Any] = field(
+        default_factory=lambda: {
+            "retry_count_by_step": {},
+            "last_error": None,
+            "provider_name": None,
+            "model_name": None,
+        }
+    )
+
+    checkpoint: dict[str, Any] = field(
+        default_factory=lambda: {
+            "last_completed_step_index": None,
+            "last_completed_step_id": None,
+            "checkpoint_path": None,
+        }
+    )
+
+    workflow_call_counts: dict[str, Any] = field(default_factory=lambda: {"total": 0, "by_provider": {}, "by_model": {}})
+    review_pass_count: int = 0
 
     def last_output_text(self) -> str | None:
         for a in reversed(self.step_artifacts):
             if a.output_text:
                 return a.output_text
+        return None
+
+    def artifact_for_step(self, step_id: str) -> StepArtifact | None:
+        for a in self.step_artifacts:
+            if a.step_id == step_id:
+                return a
         return None
 
     def set_sources_from_bundle(self) -> None:
@@ -109,7 +146,7 @@ class WorkflowStep:
     when: str | None = None  # e.g. confidence_below_threshold
 
 
-@dataclass(frozen=True)
+@dataclass
 class WorkflowDefinition:
     name: str
     output_class: OutputClass
