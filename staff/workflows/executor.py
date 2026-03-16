@@ -159,6 +159,25 @@ class WorkflowExecutor:
                     next_action="department_scope_violation",
                 )
 
+        # Context visibility enforcement: restricted_to_parents is not just a send/recipient rule.
+        for c in bundle.constraints:
+            if c.get("constraint") == "restricted_to_parents":
+                audience = state.input_payload.get("audience")
+                if audience not in ("parents", "parent"):
+                    return StepArtifact(
+                        step_id=step.step_id,
+                        step_type="retrieve",
+                        status="FAILED",
+                        output_structured={
+                            "error": "restricted_to_parents",
+                            "details": c,
+                            "note": "Workflow context restricted to parents; set input_payload.audience='parents' to proceed.",
+                        },
+                        citations=state.citations,
+                        source_object_ids=state.source_object_ids,
+                        next_action="restricted_to_parents",
+                    )
+
         return StepArtifact(
             step_id=step.step_id,
             step_type="retrieve",
