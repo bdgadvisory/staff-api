@@ -11,6 +11,9 @@ from staff.llm_router.types import ConfidenceReport, ModelSelection, RetrievalBu
 @dataclass(frozen=True)
 class AuditRecord:
     timestamp: float
+    workflow_id: str | None
+    step_id: str | None
+    step_type: str | None
     department: str
     task_type: str
     selected_capabilities: list[str]
@@ -45,11 +48,18 @@ class AuditLogger:
         escalation_chain: list[str],
         retrieval: RetrievalBundle,
         source_object_ids: list[str],
+        *,
+        workflow_id: str | None = None,
+        step_id: str | None = None,
+        step_type: str | None = None,
         latency_ms: int | None = None,
         cost_estimate: float | None = None,
     ) -> None:
         rec = AuditRecord(
             timestamp=time.time(),
+            workflow_id=workflow_id,
+            step_id=step_id,
+            step_type=step_type,
             department=ctx.department,
             task_type=ctx.task_type,
             selected_capabilities=[selection.capability],

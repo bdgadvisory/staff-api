@@ -229,9 +229,45 @@ class WorkflowExecutor:
             },
         )
 
-        out: LLMResult = adapter.complete(call)
+        try:
+            out: LLMResult = adapter.complete(call)
+        except Exception as e:
+            conf = self._conf.derive(ctx=ctx, state=state, step_type=kind, base_conf_override=0.25)
+            return StepArtifact(
+                step_id=step.step_id,
+                step_type=kind,
+                status="FAILED",
+                selected_capability=selection.capability,
+                selected_provider=selection.provider,
+                selected_model=selection.model,
+                input_refs=["retrieval_bundle"],
+                output_structured={"error": str(e)},
+                confidence=conf,
+                needs_review=True,
+                citations=state.citations,
+                source_object_ids=state.source_object_ids,
+                next_action="provider_error",
+            )
 
         conf = self._conf.derive(ctx=ctx, state=state, step_type=kind)
+
+        # per-step audit (important for live provider observability)
+        from staff.llm_router.types import RetrievalBundle
+
+        self.audit.log(
+            ctx=ctx,
+            selection=selection,
+            confidence=conf,
+            review_status=state.review_status,
+            escalation_chain=conf.escalation_reason,
+            retrieval=state.retrieval_bundle or RetrievalBundle(),
+            source_object_ids=state.source_object_ids,
+            workflow_id=state.workflow_id,
+            step_id=step.step_id,
+            step_type=kind,
+            latency_ms=out.latency_ms,
+            cost_estimate=out.cost_estimate,
+        )
 
         return StepArtifact(
             step_id=step.step_id,
@@ -281,8 +317,27 @@ class WorkflowExecutor:
         stage = ReviewStage(name=step.step_id, selection=selection, instruction=instruction)
         # Build an LLMResult wrapper for the draft.
         draft_res = LLMResult(text=draft, raw=None, provider="internal", model="draft")
-        results = self.reviewer.run_chain(ctx, draft=draft_res, stages=[stage])
-        review_out = results[-1]
+        try:
+            results = self.reviewer.run_chain(ctx, draft=draft_res, stages=[stage])
+            review_out = results[-1]
+        except Exception as e:
+            conf = self._conf.derive(ctx=ctx, state=state, step_type=step.step_type, base_conf_override=0.25)
+            state.review_status = "ESCALATE_TO_HUMAN"
+            return StepArtifact(
+                step_id=step.step_id,
+                step_type=step.step_type,
+                status="FAILED",
+                selected_capability=selection.capability,
+                selected_provider=selection.provider,
+                selected_model=selection.model,
+                input_refs=["prior_output"],
+                output_structured={"error": str(e)},
+                confidence=conf,
+                needs_review=True,
+                citations=state.citations,
+                source_object_ids=state.source_object_ids,
+                next_action="provider_error",
+            )
 
         # Minimal status parse (supports QA employee statuses)
         head = (review_out.text or "").strip().split(":", 1)[0].strip()
@@ -296,6 +351,23 @@ class WorkflowExecutor:
             state.review_status = "REVIEWED"
 
         conf = self._conf.derive(ctx=ctx, state=state, step_type=step.step_type, review_outcome=head)
+
+        from staff.llm_router.types import RetrievalBundle
+
+        self.audit.log(
+            ctx=ctx,
+            selection=selection,
+            confidence=conf,
+            review_status=state.review_status,
+            escalation_chain=conf.escalation_reason,
+            retrieval=state.retrieval_bundle or RetrievalBundle(),
+            source_object_ids=state.source_object_ids,
+            workflow_id=state.workflow_id,
+            step_id=step.step_id,
+            step_type=step.step_type,
+            latency_ms=review_out.latency_ms,
+            cost_estimate=review_out.cost_estimate,
+        )
 
         return StepArtifact(
             step_id=step.step_id,
@@ -445,6 +517,29 @@ class WorkflowExecutor:
                 )
 
         state.final_output = state.last_output_text()
+
+        from staff.llm_router.types import ModelSelection, RetrievalBundle
+
+        self.audit.log(
+            ctx=ctx,
+            selection=ModelSelection(
+                capability="reasoning_medium",  # placeholder capability for finalize record
+                provider_key="workflow.finalize",
+                provider="internal",
+                model="finalize",
+                lane="",
+            ),
+            confidence=conf,
+            review_status=state.review_status,
+            escalation_chain=conf.escalation_reason,
+            retrieval=state.retrieval_bundle or RetrievalBundle(),
+            source_object_ids=state.source_object_ids,
+            workflow_id=state.workflow_id,
+            step_id=step.step_id,
+            step_type="finalize",
+            latency_ms=None,
+            cost_estimate=None,
+        )
 
         return StepArtifact(
             step_id=step.step_id,
