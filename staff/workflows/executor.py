@@ -278,7 +278,16 @@ class WorkflowExecutor:
         results = self.reviewer.run_chain(ctx, draft=draft_res, stages=[stage])
         review_out = results[-1]
 
-        state.review_status = "REVIEWED"
+        # Minimal status parse (supports QA employee statuses)
+        head = (review_out.text or "").strip().split(":", 1)[0].strip()
+        if head in ("PASS", "PASS_WITH_WARNINGS"):
+            state.review_status = "REVIEWED"
+        elif head == "REWRITE_REQUIRED":
+            state.review_status = "REWRITE_REQUIRED"
+        elif head == "ESCALATE_TO_HUMAN":
+            state.review_status = "ESCALATE_TO_HUMAN"
+        else:
+            state.review_status = "REVIEWED"
 
         return StepArtifact(
             step_id=step.step_id,
@@ -388,6 +397,8 @@ class WorkflowExecutor:
         if state.output_class == OutputClass.C:
             if state.review_status == "NOT_REVIEWED":
                 return StepArtifact(step_id=step.step_id, step_type="finalize", status="FAILED", next_action="missing_review")
+            if state.review_status in ("REWRITE_REQUIRED", "ESCALATE_TO_HUMAN"):
+                return StepArtifact(step_id=step.step_id, step_type="finalize", status="FAILED", next_action=f"review_status_{state.review_status}")
             if state.approval_status == "AWAITING_APPROVAL":
                 return StepArtifact(step_id=step.step_id, step_type="finalize", status="HALTED", next_action="awaiting_approval")
             if state.approval_status == "REJECTED":

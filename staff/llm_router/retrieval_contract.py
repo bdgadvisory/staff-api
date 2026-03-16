@@ -38,10 +38,17 @@ class RetrievalClient:
 
     """
 
-    def __init__(self, base_url: str | None = None, mode: str | None = None, timeout_s: float = 12.0):
+    def __init__(
+        self,
+        base_url: str | None = None,
+        mode: str | None = None,
+        timeout_s: float = 12.0,
+        http_client: httpx.Client | None = None,
+    ):
         self.base_url = base_url or os.environ.get("STAFF_MEMORY_SERVICE_URL", "http://localhost:8088")
         self.mode = mode or os.environ.get("STAFF_MEMORY_SERVICE_MODE", "mock")
         self.timeout_s = timeout_s
+        self._http_client = http_client
 
     def retrieve(self, ctx: TaskContext, req: RetrievalRequest) -> RetrievalBundle:
         if self.mode == "mock":
@@ -53,10 +60,15 @@ class RetrievalClient:
             "output_class": req.output_class.value,
         }
 
-        with httpx.Client(timeout=self.timeout_s) as client:
-            resp = client.post(url, json=payload)
+        if self._http_client is not None:
+            resp = self._http_client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
+        else:
+            with httpx.Client(timeout=self.timeout_s) as client:
+                resp = client.post(url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
 
         return RetrievalBundle(
             graph_facts=data.get("graph_facts", []),

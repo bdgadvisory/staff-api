@@ -7,26 +7,57 @@ from staff.providers.base import LLMCall, ProviderAdapter
 
 
 class MockAdapter(ProviderAdapter):
-    """Local testing adapter.
+    """Deterministic testing adapter.
 
-    Produces deterministic text without calling external providers.
-    Useful for wiring retrieval/prompt/audit paths end-to-end.
+    Controlled entirely via `behavior` dict + call.metadata.
+
+    behavior keys:
+      - default_prefix: str
+      - by_step_type: {step_type: {text: str}}
+      - by_step_id: {step_id: {text: str}}
+      - qa_status_by_step_id: {step_id: "PASS"|"PASS_WITH_WARNINGS"|"REWRITE_REQUIRED"|"ESCALATE_TO_HUMAN"}
+      - inject_disagreement: bool (adds marker)
+
+    The executor supplies metadata: workflow_id, step_id, step_type, department, task_type.
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, behavior: dict | None = None):
         self.name = name
+        self.behavior = behavior or {}
 
     def complete(self, call: LLMCall) -> LLMResult:
         start = time.time()
-        user = "\n\n".join([m["content"] for m in call.messages if m["role"] == "user"])
-        txt = (
-            f"[MOCK:{self.name}:{call.model}]\n"
-            f"temperature={call.temperature} max_tokens={call.max_tokens}\n"
-            f"--- user ---\n{user[:2000]}\n"
-        )
+        md = call.metadata or {}
+        step_id = str(md.get("step_id") or "")
+        step_type = str(md.get("step_type") or "")
+
+        # Priority: by_step_id -> by_step_type -> QA status helper -> default echo
+        by_step_id = (self.behavior.get("by_step_id") or {}).get(step_id)
+        if by_step_id and "text" in by_step_id:
+            text = str(by_step_id["text"])
+        else:
+            by_step_type = (self.behavior.get("by_step_type") or {}).get(step_type)
+            if by_step_type and "text" in by_step_type:
+                text = str(by_step_type["text"])
+            else:
+                qa_status = (self.behavior.get("qa_status_by_step_id") or {}).get(step_id)
+                if qa_status:
+                    text = f"{qa_status}: mock critique output for {step_id}"
+                else:
+                    user = "\n\n".join([m["content"] for m in call.messages if m["role"] == "user"])
+                    prefix = self.behavior.get("default_prefix") or "[MOCK]"
+                    text = (
+                        f"{prefix} provider={self.name} model={call.model} step_type={step_type} step_id={step_id}\n"
+                        f"temperature={call.temperature} max_tokens={call.max_tokens}\n"
+                        f"--- user ---\n{user[:1200]}\n"
+                    )
+
+        if self.behavior.get("inject_disagreement"):
+            text += "\n[MOCK_DISAGREEMENT_MARKER]"
+
         return LLMResult(
-            text=txt,
-            raw={"mock": True},
+            text=text,
+            raw={"mock": True, "metadata": md},
             provider=self.name,
             model=call.model,
             latency_ms=int((time.time() - start) * 1000),
