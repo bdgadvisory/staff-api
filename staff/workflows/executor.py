@@ -146,6 +146,19 @@ class WorkflowExecutor:
         state.retrieval_bundle = bundle
         state.set_sources_from_bundle()
 
+        # Hard-stop constraints
+        for c in bundle.constraints:
+            if c.get("constraint") == "department_scope_violation":
+                return StepArtifact(
+                    step_id=step.step_id,
+                    step_type="retrieve",
+                    status="FAILED",
+                    output_structured={"error": "department_scope_violation", "details": c},
+                    citations=state.citations,
+                    source_object_ids=state.source_object_ids,
+                    next_action="department_scope_violation",
+                )
+
         return StepArtifact(
             step_id=step.step_id,
             step_type="retrieve",
@@ -395,7 +408,11 @@ class WorkflowExecutor:
         # check constraints in retrieval bundle
         if state.retrieval_bundle:
             for c in state.retrieval_bundle.constraints:
-                if c.get("constraint") in ("requires_parent_approval", "requires_human_approval"):
+                if c.get("constraint") in (
+                    "requires_parent_approval",
+                    "requires_human_approval",
+                    "requires_bart_approval",
+                ):
                     return True
 
         return False
@@ -478,6 +495,23 @@ class WorkflowExecutor:
         conf = self._conf.derive(ctx=ctx, state=state, step_type="finalize")
 
         # Enforce class conditions.
+        # Enforce do_not_contact_directly: block finalize/send path.
+        if state.retrieval_bundle:
+            for c in state.retrieval_bundle.constraints:
+                if c.get("constraint") == "do_not_contact_directly":
+                    conf = self._conf.derive(ctx=ctx, state=state, step_type="finalize", base_conf_override=0.20)
+                    return StepArtifact(
+                        step_id=step.step_id,
+                        step_type="finalize",
+                        status="FAILED",
+                        confidence=conf,
+                        needs_review=True,
+                        output_structured={"error": "do_not_contact_directly", "details": c},
+                        citations=state.citations,
+                        source_object_ids=state.source_object_ids,
+                        next_action="do_not_contact_directly",
+                    )
+
         if state.output_class == OutputClass.C:
             if state.review_status == "NOT_REVIEWED":
                 return StepArtifact(
