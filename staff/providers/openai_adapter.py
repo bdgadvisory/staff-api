@@ -31,6 +31,9 @@ class OpenAIAdapter(ProviderAdapter):
             self._client = client
             return
 
+        if os.environ.get("STAFF_LIVE_MODE", "0") != "1":
+            raise RuntimeError("OpenAIAdapter disabled (STAFF_LIVE_MODE != 1)")
+
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY not set")

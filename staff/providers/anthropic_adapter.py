@@ -31,6 +31,9 @@ class AnthropicAdapter(ProviderAdapter):
             self._client = client
             return
 
+        if os.environ.get("STAFF_LIVE_MODE", "0") != "1":
+            raise RuntimeError("AnthropicAdapter disabled (STAFF_LIVE_MODE != 1)")
+
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY not set")
