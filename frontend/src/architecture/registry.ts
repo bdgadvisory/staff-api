@@ -16,7 +16,7 @@ export const iconMap = {
   db: Database,
   policy: Shield,
   reminders: Bell,
-  integration: Plug ap,
+  integration: PlugZap,
   inbox: Mail,
 } as const;
 

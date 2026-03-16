@@ -1,0 +1,31 @@
+name: nestor_message
+output_class: C
+pipeline:
+  - step: classify
+    step_type: classify
+
+  - step: retrieve
+    step_type: retrieve
+
+  - step: route
+    step_type: route
+
+  - step: draft_response
+    step_type: generate
+    capability: reasoning_high
+
+  - step: final_message
+    step_type: voice_pass
+    capability: writing_publication_ready
+
+  - step: review
+    step_type: review
+    capability: writing_editorial_review
+    when: always
+
+  - step: approval_gate
+    step_type: approval_gate
+    required: false
+
+  - step: finalize
+    step_type: finalize

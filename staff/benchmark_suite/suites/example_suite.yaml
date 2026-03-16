@@ -1,0 +1,25 @@
+name: example_suite
+cases:
+  - id: nestor_sensitive_001
+    category: family_sensitivity_handling
+    input:
+      department: nestor
+      text: "Can you message my spouse about the missed pickup without sounding accusatory?"
+    expected:
+      output_class: C
+      must_include:
+        - empathy
+      must_avoid:
+        - blame
+
+  - id: linkedin_voice_001
+    category: linkedin_voice_quality
+    input:
+      department: scribe
+      text: "Write a post about policy-first AI routing with a confident, calm tone."
+
+  - id: coding_multi_file_001
+    category: multi_file_coding_quality
+    input:
+      department: foundry
+      text: "Refactor router to support YAML registry and add audit logging fields."

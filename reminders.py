@@ -369,7 +369,19 @@ def reminders_tick(x_reminders_tick_secret: str = Header(default="", alias="X-Re
                 done += 1
 
         conn.commit()
-        return {"ok": True, "processed": processed, "done": done, "errored": errored}
+
+        # tick queues (serial for MVP): reminders -> workflow resume -> maintenance
+        from staff.workflows.resume_tick import workflow_resume_tick
+
+        workflow_resume = workflow_resume_tick()
+        maintenance = {"ok": True}
+
+        return {
+            "ok": True,
+            "reminders_tick": {"processed": processed, "done": done, "errored": errored},
+            "workflow_resume_tick": workflow_resume,
+            "maintenance_tick": maintenance,
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Tick failed: {repr(e)}")

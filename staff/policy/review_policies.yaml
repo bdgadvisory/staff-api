@@ -1,0 +1,28 @@
+# Review thresholds and default chains.
+# NOTE: OutputClass C is always review-mandatory per spec.
+
+thresholds:
+  class_a_review_below: 0.70
+  class_b_review_below: 0.82
+  class_c_review_below: 0.90
+
+triggers:
+  immediate_escalation:
+    - emotional_sensitivity_detected
+    - health_related
+    - schedule_conflict
+    - public_publication
+    - provider_disagreement
+    - source_conflict
+    - architecture_change
+    - permission_change
+    - production_code_change
+
+# Default review chains are capability-based.
+# Registry maps these to provider/model.
+chains:
+  editorial:
+    - writing_editorial_review
+  qa:
+    - qa_critique
+    - qa_arbitration

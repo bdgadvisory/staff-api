@@ -3,9 +3,11 @@ SHELL := /bin/bash
 BASE ?= https://staff-api-867841687803.us-central1.run.app
 TOKEN := $(shell ./scripts/get_token.sh)
 
-.PHONY: help approvals-pending approval message approve reject interview-ask interview-answer scribe
+.PHONY: help approvals-pending approval message approve reject interview-ask interview-answer scribe test test-workflows
 
 help:
+	@echo "make test"
+	@echo "make test-workflows"
 	@echo "make approvals-pending"
 	@echo "make approval ID=<uuid>"
 	@echo "make message ID=<uuid>"
@@ -52,17 +54,25 @@ scribe:
 .PHONY: venv install dev migrate tick
 
 venv:
-python3 -m venv .venv
+	python3 -m venv .venv
 
 install:
-. .venv/bin/activate && pip install -U pip && pip install -r requirements.txt
+	. .venv/bin/activate && pip install -U pip && pip install -r requirements.txt
 
 dev:
-. .venv/bin/activate && . scripts/dev_env.sh && python -m uvicorn main:app --reload --port 8000
+	. .venv/bin/activate && . scripts/dev_env.sh && python -m uvicorn main:app --reload --port 8000
 
 migrate:
-. .venv/bin/activate && . scripts/dev_env.sh && python scripts/migrate.py
+	. .venv/bin/activate && . scripts/dev_env.sh && python scripts/migrate.py
 
 tick:
-curl -s -X POST http://127.0.0.1:8000/internal/reminders/tick \
-	-H "X-Reminders-Tick-Secret: $$REMINDERS_TICK_SECRET" | python3 -m json.tool
+	curl -s -X POST http://127.0.0.1:8000/internal/reminders/tick \
+		-H "X-Reminders-Tick-Secret: $$REMINDERS_TICK_SECRET" | python3 -m json.tool
+
+# --- CI/dev test runners ---
+
+test:
+	@./scripts/test.sh
+
+test-workflows:
+	@./scripts/test_workflows.sh

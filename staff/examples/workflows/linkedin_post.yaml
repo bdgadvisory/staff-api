@@ -1,0 +1,32 @@
+name: linkedin_post
+department: scribe
+output_class: C
+pipeline:
+  - step: retrieve
+    step_type: retrieve
+
+  - step: route
+    step_type: route
+
+  - step: argument_draft
+    step_type: generate
+    capability: writing_draft
+
+  - step: quill_rewrite
+    step_type: rewrite
+    capability: writing_rewrite
+
+  - step: voice_pass
+    step_type: voice_pass
+    capability: writing_voice_alignment
+
+  - step: editorial_critique
+    step_type: critique
+    capability: writing_editorial_review
+
+  - step: approval_gate
+    step_type: approval_gate
+    required: true
+
+  - step: finalize
+    step_type: finalize

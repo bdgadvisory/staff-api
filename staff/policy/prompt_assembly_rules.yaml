@@ -1,0 +1,23 @@
+# Prompt assembly rules (token budgets, priority order, shaping by output class)
+
+token_budgets:
+  A: 4000
+  B: 6000
+  C: 8000
+
+priority_order:
+  - graph_constraints_and_permissions
+  - hard_policy_constraints
+  - current_task_input
+  - system_verified_semantic_memory
+  - recent_episodic_memory
+  - lower_trust_or_stale_supporting_memory
+
+conflict_handling:
+  surface_conflicts_as_constraints: true
+  require_strong_model_for_resolution: true
+
+citations:
+  retain_object_ids: true
+  include_in_audit: true
+  include_in_prompt: true  # include as structured block; do not leak verbatim secrets

@@ -7,6 +7,14 @@ substitutions:
   _SERVICE: staff-api
 
 steps:
+  - name: python:3.12-slim
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        pip install -r requirements.txt
+        pytest -q
+
   - name: gcr.io/cloud-builders/docker
     args:
       [

@@ -1,0 +1,27 @@
+name: foundry_build
+output_class: C
+pipeline:
+  - step: retrieve
+    step_type: retrieve
+
+  - step: route
+    step_type: route
+
+  - step: plan
+    step_type: generate
+    capability: reasoning_high
+
+  - step: implement
+    step_type: generate
+    capability: coding_agentic
+
+  - step: critique_changed_files
+    step_type: critique
+    capability: qa_critique
+
+  - step: approval_gate
+    step_type: approval_gate
+    required: false
+
+  - step: finalize
+    step_type: finalize
