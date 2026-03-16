@@ -1,0 +1,72 @@
+# Provider registry: ONLY place exact model names live.
+# Routing targets capabilities.
+
+providers:
+  openai.default_reasoning:
+    provider: openai
+    model: gpt-5.4
+    lane: strong
+  openai.default_coding:
+    provider: openai
+    model: gpt-5.4
+    lane: strong
+  openai.agentic_coding_specialized:
+    provider: openai
+    model: gpt-5.3-codex
+    lane: specialized
+  openai.low_cost:
+    provider: openai
+    model: gpt-5-mini
+    lane: cheap
+
+  google.fast_research:
+    provider: google
+    model: gemini-flash-class
+    lane: cheap
+  google.grounded_search:
+    provider: google
+    model: gemini-flash-class-with-search
+    lane: cheap
+
+  anthropic.editorial_review:
+    provider: anthropic
+    model: claude-sonnet-class
+    lane: review
+  anthropic.premium_review:
+    provider: anthropic
+    model: claude-opus-class
+    lane: premium_review
+
+capability_map:
+  # reasoning
+  reasoning_low: { provider_key: openai.low_cost }
+  reasoning_medium: { provider_key: openai.default_reasoning }
+  reasoning_high: { provider_key: openai.default_reasoning }
+  reasoning_critical: { provider_key: openai.default_reasoning }
+
+  # coding
+  coding_basic: { provider_key: openai.default_coding }
+  coding_multi_file: { provider_key: openai.agentic_coding_specialized }
+  coding_agentic: { provider_key: openai.agentic_coding_specialized }
+  coding_architecture: { provider_key: openai.default_coding }
+
+  # research
+  research_fast: { provider_key: google.fast_research }
+  research_grounded_web: { provider_key: google.grounded_search }
+  research_synthesis: { provider_key: openai.default_reasoning }
+  research_conflict_resolution: { provider_key: openai.default_reasoning }
+
+  # writing
+  writing_draft: { provider_key: openai.default_reasoning }
+  writing_rewrite: { provider_key: anthropic.editorial_review }
+  writing_voice_alignment: { provider_key: openai.default_reasoning }
+  writing_editorial_review: { provider_key: anthropic.editorial_review }
+  writing_publication_ready: { provider_key: openai.default_reasoning }
+
+  # operational
+  classification_fast: { provider_key: google.fast_research }
+  summarization_bulk: { provider_key: google.fast_research }
+  memory_tagging: { provider_key: google.fast_research }
+  qa_bulk_validation: { provider_key: google.fast_research }
+  qa_critique: { provider_key: anthropic.editorial_review }
+  qa_arbitration: { provider_key: openai.default_reasoning }

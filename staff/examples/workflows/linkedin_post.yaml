@@ -1,0 +1,25 @@
+name: linkedin_post
+output_class: C
+pipeline:
+  - step: research
+    capability: research_grounded_web
+    provider_lane: cheap
+
+  - step: argument_draft
+    capability: writing_draft
+    provider_lane: strong
+
+  - step: quill_rewrite
+    capability: writing_rewrite
+    provider_lane: editor
+
+  - step: voice_pass
+    capability: writing_voice_alignment
+    provider_lane: strong
+
+  - step: final_editorial_review
+    capability: writing_editorial_review
+    provider_lane: editor
+
+  - step: human_approval_gate
+    required: true

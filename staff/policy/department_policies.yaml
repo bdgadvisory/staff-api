@@ -1,0 +1,35 @@
+nestor:
+  default_output_class: C
+  default_risk_level: high
+  # final human-facing important output must be strong
+  class_c_primary_capability: reasoning_high
+  review_chain_capabilities:
+    - writing_editorial_review
+
+linkedin:
+  default_output_class: C
+  default_risk_level: critical
+  class_c_primary_capability: writing_publication_ready
+  review_chain_capabilities:
+    - writing_editorial_review
+
+foundry:
+  default_output_class: C
+  default_risk_level: high
+  class_c_primary_capability: coding_architecture
+  review_chain_capabilities:
+    - qa_critique
+
+workbench:
+  default_output_class: B
+  default_risk_level: medium
+  default_primary_capability: reasoning_high
+  review_chain_capabilities:
+    - qa_critique
+
+qa:
+  default_output_class: B
+  default_risk_level: medium
+  default_primary_capability: qa_critique
+  review_chain_capabilities:
+    - qa_arbitration

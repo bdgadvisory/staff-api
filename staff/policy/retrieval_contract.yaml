@@ -1,0 +1,49 @@
+# Retrieval contract parameters (LLM layer consumption policy)
+
+limits:
+  max_graph_facts: 20
+  max_semantic_chunks: 6
+  max_episodic_events: 12
+
+ordering:
+  graph_facts: permissions_first
+  semantic_chunks: trust_then_recency
+  episodic_events: recency
+
+trust_preference:
+  prefer:
+    - system_verified
+    - verified
+    - user_stated
+  downrank:
+    - observed
+    - unverified
+
+stale_memory:
+  mode: downrank
+  include_as_supporting_only: true
+
+conflicts:
+  prefer:
+    - higher_trust
+    - newer_approved
+  on_conflict:
+    - surface_constraint
+    - escalate_if_affects_final_output
+
+response_schema:
+  graph_facts:
+    source: neo4j
+    format: list[dict]
+  semantic_chunks:
+    source: qmd_vector
+    format: list[dict]
+  episodic_events:
+    source: postgres
+    format: list[dict]
+  constraints:
+    source: derived
+    format: list[dict]
+  citations:
+    source: derived
+    format: list[dict]

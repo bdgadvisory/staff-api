@@ -1,0 +1,32 @@
+# Privacy + locality boundary policies.
+# v1 is cloud-only execution, but boundaries are explicit so local models can be inserted later.
+
+privacy_classes:
+  public:
+    allow_cloud: true
+  internal:
+    allow_cloud: true
+  confidential:
+    allow_cloud: true
+    requires_strict_redaction: true
+  restricted:
+    allow_cloud: false   # future mode; when enabled, block cloud providers
+
+locality_modes:
+  # future: local_only | cloud_ok | cloud_with_approval
+  default: cloud_ok
+
+cloud_with_approval:
+  # categories that require explicit human approval before sending to cloud.
+  - restricted
+
+blocked_from_cloud:
+  - restricted
+
+redaction:
+  # fields that must be removed from memory payloads before prompt assembly (done in retrieval service)
+  deny_fields:
+    - ssn
+    - passport
+    - bank_account
+    - medical_record_number

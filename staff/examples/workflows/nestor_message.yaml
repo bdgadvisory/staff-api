@@ -1,0 +1,24 @@
+name: nestor_message
+output_class: C
+pipeline:
+  - step: intake_classification
+    capability: classification_fast
+    provider_lane: cheap
+
+  - step: retrieval
+    action: memory_retrieve
+
+  - step: interpretation
+    capability: reasoning_high
+    provider_lane: strong
+
+  - step: final_message
+    capability: writing_publication_ready
+    provider_lane: strong
+
+  - step: optional_editorial_review
+    capability: writing_editorial_review
+    when: confidence_below_threshold
+
+  - step: human_approval
+    required: false

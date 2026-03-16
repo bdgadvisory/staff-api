@@ -1,0 +1,14 @@
+name: qa_critique
+output_class: B
+pipeline:
+  - step: bulk_validation
+    capability: qa_bulk_validation
+    provider_lane: cheap
+
+  - step: critique
+    capability: qa_critique
+    provider_lane: editor
+
+  - step: arbitration
+    capability: qa_arbitration
+    provider_lane: strong

@@ -1,0 +1,18 @@
+name: foundry_build
+output_class: C
+pipeline:
+  - step: plan
+    capability: reasoning_high
+    provider_lane: strong
+
+  - step: implement
+    capability: coding_agentic
+    provider_lane: specialized
+
+  - step: critique_changed_files
+    capability: qa_critique
+    provider_lane: editor
+
+  - step: arbitrate
+    capability: reasoning_high
+    provider_lane: strong
