@@ -48,15 +48,38 @@ class OpenAIAdapter(ProviderAdapter):
         for attempt in range(max_retries + 1):
             start = time.time()
             try:
-                # Use Chat Completions for compatibility with OpenAI-style {role, content} messages.
-                resp = self._client.chat.completions.create(
+                # Use Responses API (primary OpenAI interface).
+                # Convert OpenAI-style messages into Responses "input" message content blocks.
+                input_msgs = []
+                for m in call.messages:
+                    role = m.get("role")
+                    content = m.get("content") or ""
+                    input_msgs.append(
+                        {
+                            "role": role,
+                            "content": [{"type": "input_text", "text": content}],
+                        }
+                    )
+
+                resp = self._client.responses.create(
                     model=call.model,
-                    messages=call.messages,
+                    input=input_msgs,
                     temperature=call.temperature,
-                    max_tokens=call.max_tokens,
+                    max_output_tokens=call.max_tokens,
                 )
 
-                text = (resp.choices[0].message.content or "").strip()
+                text = (getattr(resp, "output_text", None) or "").strip()
+                if not text:
+                    # Fallback: try to extract text from output blocks if output_text isn't populated
+                    try:
+                        out_blocks = []
+                        for item in getattr(resp, "output", []) or []:
+                            for c in getattr(item, "content", []) or []:
+                                if getattr(c, "type", None) in ("output_text", "text") and getattr(c, "text", None):
+                                    out_blocks.append(c.text)
+                        text = "\n".join(out_blocks).strip()
+                    except Exception:
+                        text = ""
 
                 latency_ms = int((time.time() - start) * 1000)
 
