@@ -24,7 +24,7 @@ def run_linkedin(executor: WorkflowExecutor, ctx: TaskContext, text: str, workfl
         task_type=ctx.task_type,
         output_class=OutputClass.C,
         input_payload={"text": text, "subject_ids": [], "audience": aud},
-        audit_context={"workflow": wf.name, "audience": aud},
+        audit_context={"workflow": wf.name, "audience": aud, "workflow_path": workflow_path},
     )
     return executor.run(ctx, wf, state)
 
@@ -50,6 +50,6 @@ def run_nestor(
         task_type=ctx.task_type,
         output_class=OutputClass.C,
         input_payload={"text": text, "subject_ids": subject_ids, "audience": aud},
-        audit_context={"workflow": wf.name, "audience": aud},
+        audit_context={"workflow": wf.name, "audience": aud, "workflow_path": workflow_path},
     )
     return executor.run(ctx, wf, state)
