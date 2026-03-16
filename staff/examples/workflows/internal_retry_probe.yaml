@@ -1,0 +1,8 @@
+name: internal_retry_probe
+output_class: A
+department: staff
+pipeline:
+  - step: probe
+    step_type: generate
+    capability: reasoning_low
+    instruction: "Internal deterministic probe step."

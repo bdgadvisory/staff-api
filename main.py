@@ -14,11 +14,15 @@ from scribe import router as scribe_router
 from approvals import router as approvals_router
 from reminders import router as reminders_router, internal_router as reminders_internal_router
 from external_services import router as external_services_router
+from workflows_api import router as workflows_router
+from internal_workflow_probe import router as internal_workflow_probe_router
 app.include_router(scribe_router)
 app.include_router(approvals_router)
 app.include_router(reminders_router)
 app.include_router(reminders_internal_router)
 app.include_router(external_services_router)
+app.include_router(workflows_router)
+app.include_router(internal_workflow_probe_router)
 
 
 
