@@ -54,6 +54,7 @@ class PromptAssemblyEngine:
             "semantic_chunks": semantic,
             "episodic_events": episodic,
             "citations": bundle.citations,
+            "retrieval_meta": bundle.retrieval_meta,
         }
 
         messages = [

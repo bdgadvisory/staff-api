@@ -61,10 +61,11 @@ class TaskContext:
 
 @dataclass(frozen=True)
 class RetrievalBundle:
-    """Governed retrieval contract payload.
+    """Governed retrieval contract payload (from staff-memory-service).
 
-    IMPORTANT: This object must be produced by the retrieval layer after privacy/trust filtering,
-    not by ad-hoc file reads.
+    IMPORTANT:
+    - Produced by retrieval layer after privacy/trust filtering.
+    - Consumed by prompt assembly without ad hoc file reads.
     """
 
     graph_facts: list[dict[str, Any]] = field(default_factory=list)
@@ -72,6 +73,7 @@ class RetrievalBundle:
     episodic_events: list[dict[str, Any]] = field(default_factory=list)
     constraints: list[dict[str, Any]] = field(default_factory=list)
     citations: list[dict[str, Any]] = field(default_factory=list)
+    retrieval_meta: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

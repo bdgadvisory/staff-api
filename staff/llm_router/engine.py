@@ -70,12 +70,17 @@ class WorkflowRunner:
 
         # 3) retrieval (governed contract)
         req = RetrievalRequest(
-            query=user_input,
-            actor=ctx.actor,
-            scope=ctx.scope,
-            privacy_class=ctx.privacy_class,
+            agent_id=str(ctx.actor.get("actor_id") or ctx.department),
             department=ctx.department,
             task_type=ctx.task_type,
+            query=user_input,
+            scope=ctx.scope,
+            subject_ids=[str(ctx.actor.get("subject_id"))] if ctx.actor.get("subject_id") else [],
+            output_class=plan.output_class,
+            max_graph_facts=20,
+            max_semantic_chunks=6,
+            max_episodic_events=12,
+            include_citations=True,
         )
         bundle = self.retrieval.retrieve(ctx, req)
 
@@ -118,6 +123,10 @@ class WorkflowRunner:
             review_results = self.reviewer.run_chain(ctx, draft=primary, stages=stages)[1:]
 
         # 8) audit
+        source_ids = list(dict.fromkeys(
+            (bundle.retrieval_meta.get("source_object_ids") or []) + prompt.included_object_ids
+        ))
+
         self.audit.log(
             ctx=ctx,
             selection=plan.primary,
@@ -125,7 +134,7 @@ class WorkflowRunner:
             review_status="REVIEWED" if review_results else "NOT_REVIEWED",
             escalation_chain=escalation_decision.reasons,
             retrieval=bundle,
-            source_object_ids=prompt.included_object_ids,
+            source_object_ids=source_ids,
             latency_ms=primary.latency_ms,
             cost_estimate=primary.cost_estimate,
         )
