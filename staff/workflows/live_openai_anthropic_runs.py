@@ -53,7 +53,7 @@ def build_executor() -> WorkflowExecutor:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--workflow", required=True)
-    ap.add_argument("--department", required=True)
+    ap.add_argument("--department", required=False, help="Capability department (defaults to workflow metadata)")
     ap.add_argument("--task-type", required=True)
     ap.add_argument("--text", required=True)
     ap.add_argument("--approve", action="store_true")
@@ -62,11 +62,13 @@ def main() -> int:
     ex = build_executor()
     wf = load_workflow(args.workflow)
 
+    department = args.department or (wf.department or "scribe")
+
     ctx = TaskContext(
         request_id=str(uuid.uuid4()),
-        department=args.department,
+        department=department,
         task_type=args.task_type,
-        actor={"actor_type": "agent", "actor_id": args.department},
+        actor={"actor_type": "agent", "actor_id": department},
         human_facing=True,
         privacy_class="internal",
         scope=args.department,
@@ -75,7 +77,7 @@ def main() -> int:
     state = WorkflowState(
         workflow_id=str(uuid.uuid4()),
         workflow_type=wf.name,
-        department=args.department,
+        department=department,
         task_type=args.task_type,
         output_class=wf.output_class,
         input_payload={"text": args.text, "subject_ids": []},

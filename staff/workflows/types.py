@@ -114,3 +114,4 @@ class WorkflowDefinition:
     name: str
     output_class: OutputClass
     steps: list[WorkflowStep]
+    department: str | None = None  # metadata (capability domain), e.g. scribe

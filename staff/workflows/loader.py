@@ -39,6 +39,7 @@ def load_workflow(path: str) -> WorkflowDefinition:
 
     name = data["name"]
     out_class = OutputClass(str(data.get("output_class", "B")))
+    dept = data.get("department")
 
     steps: list[WorkflowStep] = []
     for i, raw in enumerate(data.get("pipeline", [])):
@@ -55,4 +56,4 @@ def load_workflow(path: str) -> WorkflowDefinition:
             )
         )
 
-    return WorkflowDefinition(name=name, output_class=out_class, steps=steps)
+    return WorkflowDefinition(name=name, output_class=out_class, steps=steps, department=dept)
