@@ -1,14 +1,20 @@
 name: qa_critique
 output_class: B
 pipeline:
+  - step: retrieve
+    step_type: retrieve
+
   - step: bulk_validation
+    step_type: generate
     capability: qa_bulk_validation
-    provider_lane: cheap
 
   - step: critique
+    step_type: critique
     capability: qa_critique
-    provider_lane: editor
 
   - step: arbitration
+    step_type: review
     capability: qa_arbitration
-    provider_lane: strong
+
+  - step: finalize
+    step_type: finalize

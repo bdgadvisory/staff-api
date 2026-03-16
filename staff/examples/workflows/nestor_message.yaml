@@ -1,24 +1,31 @@
 name: nestor_message
 output_class: C
 pipeline:
-  - step: intake_classification
-    capability: classification_fast
-    provider_lane: cheap
+  - step: classify
+    step_type: classify
 
-  - step: retrieval
-    action: memory_retrieve
+  - step: retrieve
+    step_type: retrieve
 
-  - step: interpretation
+  - step: route
+    step_type: route
+
+  - step: draft_response
+    step_type: generate
     capability: reasoning_high
-    provider_lane: strong
 
   - step: final_message
+    step_type: voice_pass
     capability: writing_publication_ready
-    provider_lane: strong
 
-  - step: optional_editorial_review
+  - step: review
+    step_type: review
     capability: writing_editorial_review
-    when: confidence_below_threshold
+    when: always
 
-  - step: human_approval
+  - step: approval_gate
+    step_type: approval_gate
     required: false
+
+  - step: finalize
+    step_type: finalize
