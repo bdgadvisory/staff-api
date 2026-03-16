@@ -16,7 +16,7 @@ export const iconMap = {
   db: Database,
   policy: Shield,
   reminders: Bell,
-  integration: Plug ap,
+  integration: PlugZap,
   inbox: Mail,
 } as const;
 
@@ -44,6 +44,13 @@ export const nodes: ArchNode[] = [
     status: "unknown",
     iconKey: "reminders",
     probe: { kind: "http", path: "/reminders" },
+  },
+  {
+    id: "workflow-resume",
+    name: "Workflow Resume Tick",
+    description: "Resumes halted workflows from checkpoints after provider backoff",
+    status: "unknown",
+    iconKey: "reminders",
   },
   {
     id: "skills-gate",

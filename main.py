@@ -82,17 +82,31 @@ def db_check():
 
 @app.get("/ui/status")
 def ui_status():
+    """Aggregated status endpoint for the UI.
+
+    Must be resilient: never crash because of one bad checkpoint file.
     """
-    Aggregated status endpoint for the UI.
-    Runs server-side so the UI doesn't need to call private endpoints directly.
-    """
-    out = {
+    import time
+
+    out: Dict[str, Any] = {
         "ok": True,
-        "components": {}
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        # Back-compat for existing frontend probes
+        "components": {},
+        # New shape
+        "services": {},
+        "workflow_resume": {
+            "halted_count": 0,
+            "due_now_count": 0,
+            "auto_resume_scheduled_count": 0,
+            "manual_intervention_required_count": 0,
+            "items": [],
+        },
     }
 
     # staff-api health (in-process)
     out["components"]["staff-api"] = {"status": "ok"}
+    out["services"]["staff_api"] = {"status": "ok"}
 
     # db-check (real DB connectivity)
     try:
@@ -101,8 +115,10 @@ def ui_status():
         cur.execute("SELECT 1;")
         cur.fetchone()
         out["components"]["db"] = {"status": "ok"}
+        out["services"]["database"] = {"status": "ok"}
     except Exception as e:
         out["components"]["db"] = {"status": "degraded", "error": repr(e)}
+        out["services"]["database"] = {"status": "degraded", "error": repr(e)}
     finally:
         try:
             conn.close()
@@ -119,8 +135,10 @@ def ui_status():
         cur = conn.cursor()
         cur.execute("SELECT 1 FROM reminders LIMIT 1;")
         out["components"]["reminders"] = {"status": "ok"}
+        out["services"]["reminders_tick"] = {"status": "ok"}
     except Exception as e:
         out["components"]["reminders"] = {"status": "degraded", "error": repr(e)}
+        out["services"]["reminders_tick"] = {"status": "degraded", "error": repr(e)}
     finally:
         try:
             conn.close()
@@ -130,6 +148,25 @@ def ui_status():
             connector.close()
         except Exception:
             pass
+
+    # workflow resume status derived from checkpoint store
+    try:
+        from staff.workflows.status import load_halted_workflows_from_checkpoints
+
+        wr = load_halted_workflows_from_checkpoints()
+        out["workflow_resume"] = {
+            "halted_count": wr.get("halted_count", 0),
+            "due_now_count": wr.get("due_now_count", 0),
+            "auto_resume_scheduled_count": wr.get("auto_resume_scheduled_count", 0),
+            "manual_intervention_required_count": wr.get("manual_intervention_required_count", 0),
+            "items": wr.get("items", []),
+            "invalid_checkpoint_count": wr.get("invalid_checkpoint_count", 0),
+        }
+        out["services"]["workflow_resume_tick"] = {"status": wr.get("_status", "unknown")}
+        # Back-compat for architecture graph nodes
+        out["components"]["workflow-resume"] = {"status": wr.get("_status", "unknown")}
+    except Exception as e:
+        out["services"]["workflow_resume_tick"] = {"status": "down", "error": repr(e)}
 
     # policy gate is config-side; treat as ok (UI uses this as static component)
     out["components"]["skills-gate"] = {"status": "ok"}
