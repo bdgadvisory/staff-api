@@ -6,7 +6,7 @@ nestor:
   review_chain_capabilities:
     - writing_editorial_review
 
-linkedin:
+scribe:
   default_output_class: C
   default_risk_level: critical
   class_c_primary_capability: writing_publication_ready

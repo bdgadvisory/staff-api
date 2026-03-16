@@ -39,13 +39,13 @@ class TaskClassifier:
             triggers.append("health_related")
         if has_any(self.EMOTION_WORDS) and ctx.department == "nestor":
             triggers.append("emotional_sensitivity_detected")
-        if has_any(self.PUBLIC_WORDS) or ctx.department == "linkedin":
+        if has_any(self.PUBLIC_WORDS) or ctx.department == "scribe":
             triggers.append("public_publication")
         if has_any(self.PROD_WORDS) or ctx.task_type in ("code_change", "deploy", "migration"):
             triggers.append("production_code_change")
 
         # Default output class by context
-        if ctx.department in ("linkedin", "nestor", "foundry"):
+        if ctx.department in ("scribe", "nestor", "foundry"): 
             output_class = OutputClass.C
         elif ctx.human_facing:
             output_class = OutputClass.B

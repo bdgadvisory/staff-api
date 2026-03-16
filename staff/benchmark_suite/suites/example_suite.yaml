@@ -15,7 +15,7 @@ cases:
   - id: linkedin_voice_001
     category: linkedin_voice_quality
     input:
-      department: linkedin
+      department: scribe
       text: "Write a post about policy-first AI routing with a confident, calm tone."
 
   - id: coding_multi_file_001

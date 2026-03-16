@@ -39,8 +39,8 @@ def _state(wf_name: str, dept: str, task_type: str, output_class: OutputClass, t
 
 def test_linkedin_halts_at_approval_gate(executor: WorkflowExecutor):
     wf = load_workflow("staff/examples/workflows/linkedin_post.yaml")
-    ctx = _ctx("linkedin", task_type="linkedin_post")
-    state = _state(wf.name, "linkedin", "linkedin_post", OutputClass.C, "draft a post")
+    ctx = _ctx("scribe", task_type="linkedin_post")
+    state = _state(wf.name, "scribe", "linkedin_post", OutputClass.C, "draft a post")
 
     res = executor.run(ctx, wf, state)
     assert res.halted is True
@@ -70,8 +70,8 @@ def test_linkedin_halts_at_approval_gate(executor: WorkflowExecutor):
 
 def test_linkedin_resume_approved_reaches_finalize(executor: WorkflowExecutor):
     wf = load_workflow("staff/examples/workflows/linkedin_post.yaml")
-    ctx = _ctx("linkedin", task_type="linkedin_post")
-    state = _state(wf.name, "linkedin", "linkedin_post", OutputClass.C, "draft a post")
+    ctx = _ctx("scribe", task_type="linkedin_post")
+    state = _state(wf.name, "scribe", "linkedin_post", OutputClass.C, "draft a post")
 
     executor.run(ctx, wf, state)
     assert state.approval_status == "AWAITING_APPROVAL"
@@ -91,8 +91,8 @@ def test_linkedin_resume_approved_reaches_finalize(executor: WorkflowExecutor):
 
 def test_linkedin_resume_rejected_prevents_finalize(executor: WorkflowExecutor):
     wf = load_workflow("staff/examples/workflows/linkedin_post.yaml")
-    ctx = _ctx("linkedin", task_type="linkedin_post")
-    state = _state(wf.name, "linkedin", "linkedin_post", OutputClass.C, "draft a post")
+    ctx = _ctx("scribe", task_type="linkedin_post")
+    state = _state(wf.name, "scribe", "linkedin_post", OutputClass.C, "draft a post")
 
     executor.run(ctx, wf, state)
     executor.resume_after_approval(state, approved=False, note="no")
@@ -105,8 +105,8 @@ def test_linkedin_resume_rejected_prevents_finalize(executor: WorkflowExecutor):
 
 def test_linkedin_sources_propagate_through_approval_to_finalize(executor: WorkflowExecutor):
     wf = load_workflow("staff/examples/workflows/linkedin_post.yaml")
-    ctx = _ctx("linkedin", task_type="linkedin_post")
-    state = _state(wf.name, "linkedin", "linkedin_post", OutputClass.C, "draft a post")
+    ctx = _ctx("scribe", task_type="linkedin_post")
+    state = _state(wf.name, "scribe", "linkedin_post", OutputClass.C, "draft a post")
 
     executor.run(ctx, wf, state)
     src_ids = list(state.source_object_ids)
@@ -136,8 +136,8 @@ def test_linkedin_class_c_finalize_fails_if_review_missing(executor: WorkflowExe
     # Also remove approval gate to isolate finalize failure reason.
     wf2.steps = [s for s in wf2.steps if s.step_id != "approval_gate"]
 
-    ctx = _ctx("linkedin", task_type="linkedin_post")
-    state = _state(wf2.name, "linkedin", "linkedin_post", OutputClass.C, "draft a post")
+    ctx = _ctx("scribe", task_type="linkedin_post")
+    state = _state(wf2.name, "scribe", "linkedin_post", OutputClass.C, "draft a post")
 
     res = executor.run(ctx, wf2, state)
 
@@ -245,8 +245,8 @@ def test_qa_critique_statuses_are_representable(executor: WorkflowExecutor):
 
 def test_halted_workflows_do_not_rerun_completed_steps_on_resume(executor: WorkflowExecutor):
     wf = load_workflow("staff/examples/workflows/linkedin_post.yaml")
-    ctx = _ctx("linkedin", task_type="linkedin_post")
-    state = _state(wf.name, "linkedin", "linkedin_post", OutputClass.C, "draft a post")
+    ctx = _ctx("scribe", task_type="linkedin_post")
+    state = _state(wf.name, "scribe", "linkedin_post", OutputClass.C, "draft a post")
 
     executor.run(ctx, wf, state)
     pre = [a.step_id for a in state.step_artifacts]
@@ -261,8 +261,8 @@ def test_halted_workflows_do_not_rerun_completed_steps_on_resume(executor: Workf
 
 def test_confidence_objects_present_on_required_steps(executor: WorkflowExecutor):
     wf = load_workflow("staff/examples/workflows/linkedin_post.yaml")
-    ctx = _ctx("linkedin", task_type="linkedin_post")
-    state = _state(wf.name, "linkedin", "linkedin_post", OutputClass.C, "draft a post")
+    ctx = _ctx("scribe", task_type="linkedin_post")
+    state = _state(wf.name, "scribe", "linkedin_post", OutputClass.C, "draft a post")
 
     executor.run(ctx, wf, state)
 
@@ -281,8 +281,8 @@ def test_low_confidence_review_outcome_blocks_finalize(executor: WorkflowExecuto
     executor.adapters["anthropic"].behavior["qa_status_by_step_id"]["editorial_critique"] = "REWRITE_REQUIRED"
 
     wf = load_workflow("staff/examples/workflows/linkedin_post.yaml")
-    ctx = _ctx("linkedin", task_type="linkedin_post")
-    state = _state(wf.name, "linkedin", "linkedin_post", OutputClass.C, "draft a post")
+    ctx = _ctx("scribe", task_type="linkedin_post")
+    state = _state(wf.name, "scribe", "linkedin_post", OutputClass.C, "draft a post")
 
     executor.run(ctx, wf, state)
     executor.resume_after_approval(state, approved=True)

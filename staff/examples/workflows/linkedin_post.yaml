@@ -1,4 +1,5 @@
 name: linkedin_post
+department: scribe
 output_class: C
 pipeline:
   - step: retrieve

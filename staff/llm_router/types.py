@@ -51,7 +51,7 @@ RiskLevel = Literal["low", "medium", "high", "critical"]
 @dataclass(frozen=True)
 class TaskContext:
     request_id: str
-    department: str  # nestor | linkedin | foundry | workbench | qa | staff
+    department: str  # nestor | scribe | foundry | workbench | qa | staff
     task_type: str
     actor: dict[str, Any]  # {actor_type, actor_id}
     human_facing: bool
