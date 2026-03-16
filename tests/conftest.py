@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import os
+import sys
 import json
 from typing import Any
+
+# Ensure local package imports work when running tests from repo root
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import httpx
 import pytest

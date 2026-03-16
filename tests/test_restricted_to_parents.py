@@ -58,18 +58,19 @@ def test_restricted_to_parents_missing_or_nonparent_audience_hard_stops_in_retri
     res = executor.run(ctx, wf, state)
 
     assert res.halted is True
-    assert state.step_artifacts[0].step_type == "retrieve"
-    assert state.step_artifacts[0].status == "FAILED"
-    assert state.step_artifacts[0].next_action == "restricted_to_parents"
+    retrieve_art = [a for a in state.step_artifacts if a.step_type == "retrieve"][0]
+    assert retrieve_art.step_type == "retrieve"
+    assert retrieve_art.status == "FAILED"
+    assert retrieve_art.next_action == "restricted_to_parents"
 
     # explicit non-parent audience
     state2 = _state(audience="public")
     res2 = executor.run(ctx, wf, state2)
 
     assert res2.halted is True
-    assert state2.step_artifacts[0].step_type == "retrieve"
-    assert state2.step_artifacts[0].status == "FAILED"
-    assert state2.step_artifacts[0].next_action == "restricted_to_parents"
+    retrieve_art2 = [a for a in state2.step_artifacts if a.step_type == "retrieve"][0]
+    assert retrieve_art2.status == "FAILED"
+    assert retrieve_art2.next_action == "restricted_to_parents"
 
 
 def test_restricted_to_parents_parents_audience_proceeds_past_retrieve(executor: WorkflowExecutor, monkeypatch):
@@ -83,8 +84,9 @@ def test_restricted_to_parents_parents_audience_proceeds_past_retrieve(executor:
     res = executor.run(ctx, wf, state)
 
     # Should not fail at retrieve due to the constraint.
-    assert state.step_artifacts[0].step_type == "retrieve"
-    assert state.step_artifacts[0].status == "DONE"
+    retrieve_art = [a for a in state.step_artifacts if a.step_type == "retrieve"][0]
+    assert retrieve_art.step_type == "retrieve"
+    assert retrieve_art.status == "DONE"
 
     # Workflow should proceed to at least the next step.
     assert len(state.step_artifacts) >= 2
